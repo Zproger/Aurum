@@ -311,3 +311,70 @@ async def test_years_endpoint_spans_earliest_transaction_through_current_year(
 async def test_years_endpoint_with_no_transactions_returns_only_current_year(client: AsyncClient):
     resp = await client.get("/transactions/years")
     assert resp.json() == [date.today().year]
+
+
+async def test_update_cannot_turn_a_transaction_into_a_transfer_without_a_destination(
+    client: AsyncClient, account_id, categories
+):
+    """The create path rejects a transfer with no transfer_account_id; the
+    update path has to reject it too, or the row ends up moving money out of
+    an account and into nowhere — account_service subtracts the amount from
+    account_id but only credits transfer_account_id when it isn't NULL, so
+    the balance (and Net Worth's cash line, which walks the same rows) just
+    loses it."""
+    created = await client.post(
+        "/transactions", json=_txn(account_id, amount="40.00", category_id=categories["Groceries"]["id"])
+    )
+    txn_id = created.json()["id"]
+    balance_before = money((await client.get("/accounts")).json()[0]["balance"])
+
+    resp = await client.patch(f"/transactions/{txn_id}", json={"type": "transfer", "category_id": None})
+
+    assert resp.status_code == 400
+    assert money((await client.get("/accounts")).json()[0]["balance"]) == balance_before
+
+
+async def test_update_rejects_a_transfer_pointing_at_its_own_account(client: AsyncClient, account_id):
+    """Same rule as on create: a transfer to itself is a no-op row that still
+    shows up in the ledger as a transfer."""
+    other = (await client.post("/accounts", json={"name": "Savings", "type": "savings"})).json()
+    created = await client.post(
+        "/transactions", json=_txn(account_id, type="transfer", transfer_account_id=other["id"], category_id=None)
+    )
+    txn_id = created.json()["id"]
+
+    resp = await client.patch(f"/transactions/{txn_id}", json={"transfer_account_id": account_id})
+
+    assert resp.status_code == 400
+
+
+async def test_update_rejects_a_transfer_destination_on_a_non_transfer(
+    client: AsyncClient, account_id, categories
+):
+    """transfer_account_id on an expense is meaningless — balances only read
+    it for TRANSFER rows — and create already refuses it."""
+    other = (await client.post("/accounts", json={"name": "Savings", "type": "savings"})).json()
+    created = await client.post(
+        "/transactions", json=_txn(account_id, category_id=categories["Groceries"]["id"])
+    )
+
+    resp = await client.patch(
+        f"/transactions/{created.json()['id']}", json={"transfer_account_id": other["id"]}
+    )
+
+    assert resp.status_code == 400
+
+
+async def test_update_rejects_a_category_on_a_transfer(client: AsyncClient, account_id, categories):
+    """A categorized transfer would be counted as spending by the reports that
+    join on category — create rejects it, update must as well."""
+    other = (await client.post("/accounts", json={"name": "Savings", "type": "savings"})).json()
+    created = await client.post(
+        "/transactions", json=_txn(account_id, type="transfer", transfer_account_id=other["id"], category_id=None)
+    )
+
+    resp = await client.patch(
+        f"/transactions/{created.json()['id']}", json={"category_id": categories["Groceries"]["id"]}
+    )
+
+    assert resp.status_code == 400

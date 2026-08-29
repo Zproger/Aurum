@@ -18,6 +18,7 @@ from app.schemas.transaction import (
     TransactionPage,
     TransactionRead,
     TransactionUpdate,
+    transfer_rule_violation,
 )
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -193,9 +194,22 @@ async def update_transaction(
     if transaction is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
     updates = payload.model_dump(exclude_unset=True, exclude={"tag_ids"})
+    # Checks run against the row as it would look after the patch, not just
+    # the fields sent: switching type alone can invalidate fields left
+    # untouched.
     effective_type = updates.get("type", transaction.type)
     effective_category_id = updates.get("category_id", transaction.category_id)
+    effective_account_id = updates.get("account_id", transaction.account_id)
+    effective_transfer_account_id = updates.get("transfer_account_id", transaction.transfer_account_id)
     await _ensure_category_matches_type(session, effective_category_id, effective_type)
+    violation = transfer_rule_violation(
+        type=effective_type,
+        account_id=effective_account_id,
+        transfer_account_id=effective_transfer_account_id,
+        category_id=effective_category_id,
+    )
+    if violation:
+        raise HTTPException(status_code=400, detail=violation)
     for field, value in updates.items():
         setattr(transaction, field, value)
     if payload.tag_ids is not None:

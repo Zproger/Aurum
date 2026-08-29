@@ -10,6 +10,35 @@ from app.schemas.category import CategoryRead
 from app.schemas.tag import TagRead
 
 
+def transfer_rule_violation(
+    *,
+    type: TransactionType,
+    account_id: int,
+    transfer_account_id: int | None,
+    category_id: int | None,
+) -> str | None:
+    """The transfer invariants in one place, returning the problem as text or
+    None if the combination is valid.
+
+    Both halves of the write path go through this: the create schema below
+    (as a pydantic validator) and the PATCH route (see
+    routes/transactions.py). Enforcing it on create only used to let an edit
+    produce a row that create would have rejected — most damagingly a
+    transfer with no transfer_account_id, which TransactionRead itself can't
+    serialize, so the row broke every later read of the transactions list.
+    """
+    if type == TransactionType.TRANSFER:
+        if not transfer_account_id:
+            return "transfer_account_id is required for transfer transactions"
+        if transfer_account_id == account_id:
+            return "transfer_account_id must differ from account_id"
+        if category_id:
+            return "category_id is not valid for transfer transactions"
+    elif transfer_account_id:
+        return "transfer_account_id is only valid for transfer transactions"
+    return None
+
+
 class TransactionBase(BaseModel):
     account_id: int
     category_id: int | None = None
@@ -30,14 +59,14 @@ class TransactionBase(BaseModel):
 
     @model_validator(mode="after")
     def _validate_type_specific_fields(self) -> "TransactionBase":
-        if self.type == TransactionType.TRANSFER and not self.transfer_account_id:
-            raise ValueError("transfer_account_id is required for transfer transactions")
-        if self.type == TransactionType.TRANSFER and self.transfer_account_id == self.account_id:
-            raise ValueError("transfer_account_id must differ from account_id")
-        if self.type != TransactionType.TRANSFER and self.transfer_account_id:
-            raise ValueError("transfer_account_id is only valid for transfer transactions")
-        if self.type == TransactionType.TRANSFER and self.category_id:
-            raise ValueError("category_id is not valid for transfer transactions")
+        violation = transfer_rule_violation(
+            type=self.type,
+            account_id=self.account_id,
+            transfer_account_id=self.transfer_account_id,
+            category_id=self.category_id,
+        )
+        if violation:
+            raise ValueError(violation)
         return self
 
 
