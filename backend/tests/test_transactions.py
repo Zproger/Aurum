@@ -378,3 +378,26 @@ async def test_update_rejects_a_category_on_a_transfer(client: AsyncClient, acco
     )
 
     assert resp.status_code == 400
+
+
+async def test_a_transfer_whose_destination_account_was_deleted_can_still_be_listed(
+    client: AsyncClient, account_id
+):
+    """Deleting an account nulls transfer_account_id on the transfers that
+    pointed at it (the FK is ON DELETE SET NULL), leaving a row that create
+    would reject. Refusing to *serialize* such a row takes the whole
+    transactions list down with a 500 — and with the list gone there is no
+    way left in the UI to delete the row and recover. Reading has to stay
+    possible; only writing is guarded."""
+    other = (await client.post("/accounts", json={"name": "Savings", "type": "savings"})).json()
+    created = await client.post(
+        "/transactions", json=_txn(account_id, type="transfer", transfer_account_id=other["id"], category_id=None)
+    )
+    txn_id = created.json()["id"]
+    assert (await client.delete(f"/accounts/{other['id']}")).status_code == 204
+
+    listing = await client.get("/transactions")
+
+    assert listing.status_code == 200
+    assert txn_id in [item["id"] for item in listing.json()["items"]]
+    assert (await client.delete(f"/transactions/{txn_id}")).status_code == 204

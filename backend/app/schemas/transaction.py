@@ -39,7 +39,15 @@ def transfer_rule_violation(
     return None
 
 
-class TransactionBase(BaseModel):
+class TransactionFields(BaseModel):
+    """A transaction's shape, without the rules that only make sense while
+    writing one. Reading goes through this: rows already in the database can
+    stop satisfying a write-time rule through no fault of their own — the
+    transfer_account_id FK is ON DELETE SET NULL, so deleting an account
+    leaves the transfers that pointed at it with no destination — and
+    refusing to serialize such a row would take the whole transactions list
+    down with it, leaving no way in the UI to find and delete the row."""
+
     account_id: int
     category_id: int | None = None
     transfer_account_id: int | None = None
@@ -56,6 +64,11 @@ class TransactionBase(BaseModel):
     @classmethod
     def _capitalize_description(cls, value: str) -> str:
         return capitalize_first_letter(value)
+
+
+class TransactionBase(TransactionFields):
+    """The write-side shape: the fields plus the invariants a new or edited
+    row has to satisfy."""
 
     @model_validator(mode="after")
     def _validate_type_specific_fields(self) -> "TransactionBase":
@@ -93,7 +106,7 @@ class TransactionUpdate(BaseModel):
         return capitalize_first_letter(value) if value is not None else None
 
 
-class TransactionRead(TransactionBase):
+class TransactionRead(TransactionFields):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
