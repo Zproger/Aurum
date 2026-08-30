@@ -22,8 +22,11 @@ class Settings(BaseSettings):
     # Default currency shown across the UI when an account doesn't override it
     default_currency: str = "USD"
 
-    # Comma-separated list of origins allowed to call the API (frontend dev server, etc.)
-    cors_origins: str = "*"
+    # Comma-separated list of browser origins allowed to call the API. Empty
+    # by default, which allows none: the shipped compose serves the UI and the
+    # API from one nginx, and the Vite dev server proxies /api, so neither is
+    # a cross-origin caller. Set it only for a genuinely separate frontend.
+    cors_origins: str = ""
 
     @property
     def database_url(self) -> str:

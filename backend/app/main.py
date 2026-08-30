@@ -39,13 +39,21 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Aurum API", version=APP_VERSION, lifespan=lifespan)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS stays off unless someone deliberately opens it, and credentials are
+# only granted to a pinned list. Starlette answers a credentialed "*" by
+# echoing back whatever Origin asked instead of a literal "*" — so the two
+# together turn any page the user happens to have open into an authenticated
+# client of their instance, which is exactly what the README's "fine if it's
+# only reachable from localhost" advice assumes can't happen.
+cors_origins = settings.cors_origins_list
+if cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_credentials="*" not in cors_origins,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(accounts.router, prefix="/api")
