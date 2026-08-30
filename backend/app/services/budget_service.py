@@ -3,6 +3,7 @@ get_budget_status(), which compares each limit against actual spend for a
 given month — the data behind the Budget page's progress bars and the
 budget_exceeded proactive alert (services/insights_service.py)."""
 import calendar
+from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
@@ -73,10 +74,28 @@ async def get_budget_status(session: AsyncSession, year: int, month: int) -> Bud
     if not budgets:
         return BudgetStatusResponse(year=year, month=month, items=[])
 
+    # A budget on a top-level category covers its subcategories too — the
+    # same rollup the Dashboard breakdown and the category report already do
+    # (coalesce(parent_id, id) in dashboard_service/reports_service).
+    # Counting only exact category_id matches meant a month could read as 900
+    # spent on the Dashboard and 0 against its own budget. A subcategory that
+    # has a budget of its own still tracks its own spending: both bars move,
+    # each against its own limit.
+    budget_category_ids = [b.category_id for b in budgets]
+    children_by_parent: dict[int, list[int]] = defaultdict(list)
+    child_rows = await session.execute(
+        select(Category.id, Category.parent_id).where(Category.parent_id.in_(budget_category_ids))
+    )
+    for child_id, parent_id in child_rows.all():
+        children_by_parent[parent_id].append(child_id)
+
+    counted_ids = set(budget_category_ids).union(
+        child_id for children in children_by_parent.values() for child_id in children
+    )
     spent_stmt = (
         select(Transaction.category_id, func.coalesce(func.sum(Transaction.amount), 0))
         .where(
-            Transaction.category_id.in_([b.category_id for b in budgets]),
+            Transaction.category_id.in_(counted_ids),
             Transaction.type == TransactionType.EXPENSE,
             Transaction.date >= start,
             Transaction.date <= end,
@@ -87,7 +106,10 @@ async def get_budget_status(session: AsyncSession, year: int, month: int) -> Bud
 
     items = []
     for budget in budgets:
-        spent = spent_by_category.get(budget.category_id, Decimal("0"))
+        spent = spent_by_category.get(budget.category_id, Decimal("0")) + sum(
+            (spent_by_category.get(child_id, Decimal("0")) for child_id in children_by_parent[budget.category_id]),
+            Decimal("0"),
+        )
         percent = float(spent / budget.monthly_limit * 100) if budget.monthly_limit else 0.0
         items.append(
             BudgetStatus(

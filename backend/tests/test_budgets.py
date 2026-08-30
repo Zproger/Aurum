@@ -80,3 +80,55 @@ async def test_delete_budget_removes_it_from_status(client: AsyncClient, account
 
     status = await client.get("/budgets/status", params={"year": 2026, "month": 8})
     assert status.json()["items"] == []
+
+
+async def _subcategory(client: AsyncClient, parent_id: int, name: str = "Rent") -> int:
+    resp = await client.post(
+        "/categories",
+        json={"name": name, "kind": "expense", "color": "#7a869a", "parent_id": parent_id},
+    )
+    return resp.json()["id"]
+
+
+async def test_budget_on_a_parent_category_counts_spending_in_its_subcategories(
+    client: AsyncClient, account_id, categories
+):
+    """The Dashboard breakdown and the category report both roll a
+    subcategory's spending up into its parent (coalesce(parent_id, id)). A
+    budget set on the parent has to agree with them, or the same month reads
+    as 900 spent on one screen and 0 on the other."""
+    parent_id = categories["Housing & Utilities"]["id"]
+    child_id = await _subcategory(client, parent_id)
+    await client.post("/budgets", json={"category_id": parent_id, "monthly_limit": "1000.00"})
+    await client.post(
+        "/transactions", json=txn_payload(account_id, category_id=child_id, amount="900.00", date="2026-03-10")
+    )
+
+    status = (await client.get("/budgets/status?year=2026&month=3")).json()["items"][0]
+    dashboard = (await client.get("/dashboard/summary?year=2026&month=3")).json()
+
+    assert money(status["spent"]) == money("900.00")
+    assert money(status["remaining"]) == money("100.00")
+    # The two screens must show the same number for the same category.
+    parent_slice = next(s for s in dashboard["spending_by_category"] if s["category_id"] == parent_id)
+    assert money(parent_slice["amount"]) == money(status["spent"])
+
+
+async def test_a_subcategory_keeps_its_own_budget_separate(client: AsyncClient, account_id, categories):
+    """Rolling children into a parent's budget must not swallow a budget set
+    on the child itself — both bars track the same spending, each against its
+    own limit."""
+    parent_id = categories["Housing & Utilities"]["id"]
+    child_id = await _subcategory(client, parent_id)
+    await client.post("/budgets", json={"category_id": parent_id, "monthly_limit": "1000.00"})
+    await client.post("/budgets", json={"category_id": child_id, "monthly_limit": "800.00"})
+    await client.post(
+        "/transactions", json=txn_payload(account_id, category_id=child_id, amount="900.00", date="2026-03-10")
+    )
+
+    items = {item["category_id"]: item for item in (await client.get("/budgets/status?year=2026&month=3")).json()["items"]}
+
+    assert money(items[child_id]["spent"]) == money("900.00")
+    assert items[child_id]["is_over_budget"] is True
+    assert money(items[parent_id]["spent"]) == money("900.00")
+    assert items[parent_id]["is_over_budget"] is False
