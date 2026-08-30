@@ -517,3 +517,24 @@ export interface AppSettings {
   idle_cash_threshold_days: number;
 }
 
+export interface ZenmoneyStatus {
+  is_configured: boolean;
+  server_timestamp: number;
+  last_synced_at: string | null;
+  synced_accounts_count: number;
+  synced_categories_count: number;
+  synced_transactions_count: number;
+  last_error: string | null;
+}
+
+export interface ZenmoneySyncResult {
+  success: boolean;
+  message: string;
+  server_timestamp: number;
+  accounts_synced: number;
+  categories_synced: number;
+  transactions_synced: number;
+  transactions_deleted: number;
+  last_synced_at: string;
+}
+

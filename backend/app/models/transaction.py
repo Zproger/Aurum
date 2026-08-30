@@ -30,6 +30,8 @@ class Transaction(Base, TimestampMixin):
     merchant: Mapped[str | None] = mapped_column(String(150), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     date: Mapped[date_] = mapped_column(Date, nullable=False)
+    # Optional ZenMoney transaction UUID for automatic sync/deduplication.
+    zenmoney_id: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True, index=True)
 
     account: Mapped["Account"] = relationship(back_populates="transactions", foreign_keys=[account_id])
     transfer_account: Mapped["Account | None"] = relationship(foreign_keys=[transfer_account_id])

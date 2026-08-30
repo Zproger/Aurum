@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     # rather than silently hitting CoinGecko's much stingier keyless tier.
     coingecko_api_key: str = ""
 
+    # ZenMoney API Bearer token for syncing accounts and transactions.
+    # Empty by default; the ZenMoney sync endpoints 400 with a clear message
+    # until AURUM_ZENMONEY_TOKEN is set in .env.
+    zenmoney_token: str = ""
+
     @property
     def database_url(self) -> str:
         return (

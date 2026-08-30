@@ -342,6 +342,27 @@ const ru = {
   "backup.footerWarning":
     "Восстановление полностью заменяет текущие данные содержимым файла — это нельзя отменить.",
 
+  "zenmoney.title": "Синхронизация с ZenMoney",
+  "zenmoney.description":
+    "Автоматический импорт счетов, категорий и транзакций из вашего аккаунта ZenMoney через Diff API.",
+  "zenmoney.notConfiguredTitle": "Токен не настроен",
+  "zenmoney.notConfiguredDescription":
+    "Для работы синхронизации добавьте ваш API токен в файл .env в переменную AURUM_ZENMONEY_TOKEN и перезапустите контейнер бэкенда.",
+  "zenmoney.statusConnected": "Подключено",
+  "zenmoney.statusNotConnected": "Не настроено",
+  "zenmoney.lastSynced": "Последняя синхронизация: {{time}}",
+  "zenmoney.neverSynced": "Ещё не синхронизировалось",
+  "zenmoney.syncedAccounts": "Счетов: {{count}}",
+  "zenmoney.syncedCategories": "Категорий: {{count}}",
+  "zenmoney.syncedTransactions": "Транзакций: {{count}}",
+  "zenmoney.syncButton": "Синхронизировать сейчас",
+  "zenmoney.syncing": "Синхронизация…",
+  "zenmoney.fullResyncButton": "Полный пересинк",
+  "zenmoney.fullResyncConfirm":
+    "Сбросить метку времени и выполнить полную синхронизацию всей истории с ZenMoney?",
+  "zenmoney.syncSuccess": "Синхронизация с ZenMoney успешно завершена.",
+  "zenmoney.syncError": "Ошибка при синхронизации с ZenMoney.",
+
   "insights.negativeCashFlow": "Расходы превышают доходы {{months}} мес. подряд (по последним завершённым месяцам)",
   "insights.netWorthDecline": "Капитал снижается {{months}} мес. подряд",
   "insights.budgetExceededOne": "Превышен бюджет в 1 категории в этом месяце",
@@ -823,6 +844,27 @@ const en: Record<keyof typeof ru, string> = {
     "Restore data from “{{filename}}”?\n\nThis will COMPLETELY replace all current accounts, categories, transactions, and assets with the data from the file. This action cannot be undone — if you want to keep your current data, export it first.",
   "backup.footerWarning":
     "Restoring completely replaces your current data with the file's contents — this cannot be undone.",
+
+  "zenmoney.title": "ZenMoney Sync",
+  "zenmoney.description":
+    "Automatic import of accounts, categories, and transactions from your ZenMoney account via the Diff API.",
+  "zenmoney.notConfiguredTitle": "Token not configured",
+  "zenmoney.notConfiguredDescription":
+    "To enable synchronization, set your personal API token in the .env file under AURUM_ZENMONEY_TOKEN and restart the backend container.",
+  "zenmoney.statusConnected": "Connected",
+  "zenmoney.statusNotConnected": "Not configured",
+  "zenmoney.lastSynced": "Last synced: {{time}}",
+  "zenmoney.neverSynced": "Never synced",
+  "zenmoney.syncedAccounts": "Accounts: {{count}}",
+  "zenmoney.syncedCategories": "Categories: {{count}}",
+  "zenmoney.syncedTransactions": "Transactions: {{count}}",
+  "zenmoney.syncButton": "Sync now",
+  "zenmoney.syncing": "Syncing…",
+  "zenmoney.fullResyncButton": "Full resync",
+  "zenmoney.fullResyncConfirm":
+    "Reset sync timestamp and perform a full synchronization from the beginning of history?",
+  "zenmoney.syncSuccess": "ZenMoney synchronization completed successfully.",
+  "zenmoney.syncError": "ZenMoney synchronization error.",
 
   "insights.negativeCashFlow": "Expenses have exceeded income for {{months}} months in a row (based on the last completed months)",
   "insights.netWorthDecline": "Net worth has been declining for {{months}} months in a row",

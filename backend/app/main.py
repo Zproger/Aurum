@@ -21,6 +21,7 @@ from app.api.routes import (
     settings as settings_routes,
     tags,
     transactions,
+    zenmoney,
 )
 from app.core.config import APP_VERSION, get_settings
 from app.db.seed import seed_default_account, seed_default_app_settings, seed_default_categories
@@ -73,6 +74,7 @@ app.include_router(recurring.router, prefix="/api")
 app.include_router(cash_flow.router, prefix="/api")
 app.include_router(tags.router, prefix="/api")
 app.include_router(crypto.router, prefix="/api")
+app.include_router(zenmoney.router, prefix="/api")
 
 
 @app.get("/api/health")
