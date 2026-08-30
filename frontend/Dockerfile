@@ -1,11 +1,11 @@
-FROM node:22-alpine AS build
+FROM docker.io/library/node:22-alpine AS build
 WORKDIR /app
 COPY package.json ./
 RUN npm install
 COPY . .
 RUN npm run build
 
-FROM nginx:1.27-alpine
+FROM docker.io/library/nginx:1.27-alpine
 # openssl generates the htpasswd hash for optional basic auth — see
 # docker-entrypoint.d/20-basic-auth.sh.
 RUN apk add --no-cache openssl

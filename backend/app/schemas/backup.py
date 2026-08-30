@@ -26,6 +26,7 @@ class AccountBackup(BaseModel):
     currency: str
     color: str | None
     is_archived: bool
+    zenmoney_id: str | None = None
 
 
 class CategoryBackup(BaseModel):
@@ -41,6 +42,7 @@ class CategoryBackup(BaseModel):
     # Defaulted so a backup exported before subcategories existed still
     # imports cleanly under the same format version.
     parent_id: int | None = None
+    zenmoney_id: str | None = None
 
 
 class TagBackup(BaseModel):
@@ -68,6 +70,7 @@ class TransactionBackup(BaseModel):
     # explicitly in build_backup() from the `tags` relationship, since
     # from_attributes can't map a `tags` relationship to a `tag_ids` field.
     tag_ids: list[int] = Field(default_factory=list)
+    zenmoney_id: str | None = None
 
 
 class TransactionSplitBackup(BaseModel):

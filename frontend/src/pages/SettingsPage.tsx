@@ -2,6 +2,7 @@ import { AlertThresholdsCard } from "@/components/settings/AlertThresholdsCard";
 import { BackupCard } from "@/components/settings/BackupCard";
 import { CurrencyCard } from "@/components/settings/CurrencyCard";
 import { PreferencesCard } from "@/components/settings/PreferencesCard";
+import { ZenMoneySyncCard } from "@/components/settings/ZenMoneySyncCard";
 
 export function SettingsPage() {
   return (
@@ -10,6 +11,7 @@ export function SettingsPage() {
       <CurrencyCard />
       <AlertThresholdsCard />
       <BackupCard />
+      <ZenMoneySyncCard />
     </div>
   );
 }

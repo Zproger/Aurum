@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: docker.io/library/postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${AURUM_POSTGRES_USER:-aurum}
@@ -28,6 +28,8 @@ services:
       # Free CoinGecko Demo key (coingecko.com/en/api/pricing) — the Crypto
       # tab's price sync 400s with a clear message until this is set.
       AURUM_COINGECKO_API_KEY: ${AURUM_COINGECKO_API_KEY:-}
+      # ZenMoney API Bearer token for automatic account/transaction sync.
+      AURUM_ZENMONEY_TOKEN: ${AURUM_ZENMONEY_TOKEN:-}
     depends_on:
       db:
         condition: service_healthy
