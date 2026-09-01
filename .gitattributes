@@ -1,0 +1,31 @@
+# Line ending normalisation.
+#
+# On Windows, git with core.autocrlf=true rewrites text files to CRLF on
+# checkout. For files executed inside the Linux containers that is fatal: the
+# shebang becomes "#!/bin/sh\r", the kernel looks for an interpreter literally
+# named "/bin/sh\r", fails to find it, and the container dies with exit 127
+# ("not found"). Keep the working tree on LF regardless of host OS.
+* text=auto eol=lf
+
+# Explicit — everything Linux executes or parses.
+*.sh        text eol=lf
+*.envsh     text eol=lf
+Dockerfile  text eol=lf
+*.conf      text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.ini       text eol=lf
+*.mako      text eol=lf
+.env.example text eol=lf
+.dockerignore text eol=lf
+
+# Leave binary assets alone.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.pdf  binary
