@@ -12,7 +12,7 @@ interface AccountFormModalProps {
   account?: Account | null;
 }
 
-const ACCOUNT_TYPES: AccountType[] = ["checking", "savings", "credit_card", "cash", "investment", "other"];
+const ACCOUNT_TYPES: AccountType[] = ["checking", "debit_card", "savings", "credit_card", "cash", "investment", "other"];
 
 const EMPTY_FORM = { name: "", type: "checking" as AccountType };
 

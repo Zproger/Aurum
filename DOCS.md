@@ -126,7 +126,7 @@ An account is a place money lives — a bank account, a card, a cash wallet. Eve
 to exactly one account (transfers touch two). Balances are **derived** from transactions, not
 stored — there's no "set balance" endpoint.
 
-**`AccountType`:** `checking` · `savings` · `credit_card` · `cash` · `investment` · `other`
+**`AccountType`:** `checking` · `debit_card` · `savings` · `credit_card` · `cash` · `investment` · `other`
 
 | Method | Path | Description |
 |---|---|---|
