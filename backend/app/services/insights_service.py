@@ -33,7 +33,7 @@ MAX_LOOKBACK_MONTHS = 24
 # Accounts where a big, untouched balance means money isn't working — a
 # credit card balance isn't "your cash", an investment account is already
 # invested, and OTHER is too ambiguous to guess at.
-_IDLE_CASH_ACCOUNT_TYPES = (AccountType.CHECKING, AccountType.SAVINGS, AccountType.CASH)
+_IDLE_CASH_ACCOUNT_TYPES = (AccountType.CHECKING, AccountType.DEBIT_CARD, AccountType.SAVINGS, AccountType.CASH)
 
 
 def _previous_month(year: int, month: int) -> tuple[int, int]:

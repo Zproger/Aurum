@@ -2,7 +2,7 @@
 asset class.
 
 Design note: "Cash" is not stored anywhere — it's derived live from
-Account/Transaction data (checking/savings/cash/investment accounts) so the
+Account/Transaction data (checking/debit-card/savings/cash/investment accounts) so the
 Transactions feature stays the single source of truth for liquid money.
 Investment accounts count here too: their balance is uninvested/unallocated
 money sitting on the account, not the market value of what's actually
@@ -36,7 +36,13 @@ from app.schemas.net_worth import (
     RiskLevelSummary,
 )
 
-CASH_ACCOUNT_TYPES = {AccountType.CHECKING, AccountType.SAVINGS, AccountType.CASH, AccountType.INVESTMENT}
+CASH_ACCOUNT_TYPES = {
+    AccountType.CHECKING,
+    AccountType.DEBIT_CARD,
+    AccountType.SAVINGS,
+    AccountType.CASH,
+    AccountType.INVESTMENT,
+}
 
 RANGE_DAYS = {"30d": 30, "90d": 90, "1y": 365, "5y": 365 * 5}
 
