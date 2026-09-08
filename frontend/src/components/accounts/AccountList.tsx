@@ -12,6 +12,7 @@ interface AccountListProps {
 
 const TYPE_ICONS: Record<AccountType, LucideIcon> = {
   checking: Wallet,
+  debit_card: CreditCard,
   savings: PiggyBank,
   credit_card: CreditCard,
   cash: Banknote,

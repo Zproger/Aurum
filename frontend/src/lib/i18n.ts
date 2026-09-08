@@ -424,6 +424,7 @@ const ru = {
   "account.confirmDelete":
     "Удалить счёт «{{name}}»?\n\nЭто безвозвратно удалит и ВСЕ транзакции по этому счёту. Если хотите сохранить историю, заархивируйте счёт вместо удаления.",
   "account.type.checking": "Текущий счёт",
+  "account.type.debit_card": "Дебетовая карта",
   "account.type.savings": "Накопительный счёт",
   "account.type.credit_card": "Кредитная карта",
   "account.type.cash": "Наличные",
@@ -918,6 +919,7 @@ const en: Record<keyof typeof ru, string> = {
   "account.confirmDelete":
     "Delete the account “{{name}}”?\n\nThis will permanently delete ALL transactions on this account too. If you want to keep the history, archive the account instead of deleting it.",
   "account.type.checking": "Checking",
+  "account.type.debit_card": "Debit card",
   "account.type.savings": "Savings",
   "account.type.credit_card": "Credit card",
   "account.type.cash": "Cash",

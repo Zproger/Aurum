@@ -51,6 +51,25 @@ async def test_idle_cash_ignores_investment_accounts(client: AsyncClient, catego
     assert "idle_cash" not in await _alert_keys(client)
 
 
+async def test_idle_cash_includes_debit_cards(client: AsyncClient, categories):
+    debit_card = await client.post(
+        "/accounts", json={"name": "Debit card", "type": "debit_card", "currency": "USD"}
+    )
+    debit_card_id = debit_card.json()["id"]
+    await client.post(
+        "/transactions",
+        json=_txn(
+            debit_card_id,
+            type="income",
+            amount="5000.00",
+            category_id=categories["Salary"]["id"],
+            date=STALE_DATE,
+        ),
+    )
+
+    assert "idle_cash" in await _alert_keys(client)
+
+
 async def test_idle_cash_respects_custom_threshold(client: AsyncClient, account_id, categories):
     await client.post(
         "/transactions",

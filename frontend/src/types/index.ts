@@ -1,4 +1,4 @@
-export type AccountType = "checking" | "savings" | "credit_card" | "cash" | "investment" | "other";
+export type AccountType = "checking" | "debit_card" | "savings" | "credit_card" | "cash" | "investment" | "other";
 export type CategoryKind = "income" | "expense";
 export type TransactionType = "income" | "expense" | "transfer";
 export type RecurringFrequency = "weekly" | "monthly" | "yearly";

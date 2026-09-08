@@ -4,6 +4,7 @@ import enum
 
 class AccountType(str, enum.Enum):
     CHECKING = "checking"
+    DEBIT_CARD = "debit_card"
     SAVINGS = "savings"
     CREDIT_CARD = "credit_card"
     CASH = "cash"
