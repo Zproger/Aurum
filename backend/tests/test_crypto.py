@@ -28,18 +28,26 @@ def _fake_fetch(prices: dict[str, "crypto_service._MarketPoint"]):
     return fetch
 
 
-async def _add_bitcoin(client: AsyncClient, quantity: str = "0.5", price_per_unit: str = "40000") -> dict:
-    resp = await client.post(
-        "/crypto/holdings",
-        json={
-            "coingecko_id": "bitcoin",
-            "symbol": "btc",
-            "name": "Bitcoin",
-            "quantity": quantity,
-            "price_per_unit": price_per_unit,
-            "date": "2026-01-01",
-        },
-    )
+async def _add_bitcoin(
+    client: AsyncClient,
+    quantity: str = "0.5",
+    price_per_unit: str = "40000",
+    risk_level: str | None = None,
+    network: str | None = None,
+) -> dict:
+    payload = {
+        "coingecko_id": "bitcoin",
+        "symbol": "btc",
+        "name": "Bitcoin",
+        "quantity": quantity,
+        "price_per_unit": price_per_unit,
+        "date": "2026-01-01",
+    }
+    if risk_level is not None:
+        payload["risk_level"] = risk_level
+    if network is not None:
+        payload["network"] = network
+    resp = await client.post("/crypto/holdings", json=payload)
     assert resp.status_code == 201, resp.text
     return resp.json()
 
@@ -678,3 +686,91 @@ async def test_empty_archived_portfolio_can_be_deleted(client: AsyncClient):
 
     assert resp.status_code == 204
     assert (await client.get("/crypto/portfolios")).json() == []
+
+
+async def test_create_holding_defaults_risk_level_to_high(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
+
+    holding = await _add_bitcoin(client)
+
+    assert holding["risk_level"] == "high"
+
+
+async def test_create_holding_accepts_a_custom_risk_level(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
+
+    holding = await _add_bitcoin(client, risk_level="low")
+
+    assert holding["risk_level"] == "low"
+
+
+async def test_holding_risk_level_is_editable_via_the_underlying_asset(client: AsyncClient, monkeypatch):
+    """risk_level lives on the Asset, not CryptoHolding — see
+    services/crypto_service.py's _to_read — so it's edited through the
+    existing PATCH /assets/{asset_id}, same endpoint every other Asset
+    already uses, rather than a crypto-specific route."""
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
+    holding = await _add_bitcoin(client, risk_level="high")
+
+    resp = await client.patch(f"/assets/{holding['asset_id']}", json={"risk_level": "medium"})
+    assert resp.status_code == 200, resp.text
+
+    refreshed = (await client.get("/crypto/holdings")).json()["holdings"][0]
+    assert refreshed["risk_level"] == "medium"
+
+
+async def test_create_holding_defaults_network_to_null(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
+
+    holding = await _add_bitcoin(client)
+
+    assert holding["network"] is None
+
+
+async def test_create_holding_accepts_a_network(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
+
+    holding = await _add_bitcoin(client, network="Ethereum")
+
+    assert holding["network"] == "Ethereum"
+
+
+async def test_update_holding_network(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
+    holding = await _add_bitcoin(client)
+
+    resp = await client.patch(f"/crypto/holdings/{holding['asset_id']}", json={"network": "Tron"})
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["network"] == "Tron"
+    refreshed = (await client.get("/crypto/holdings")).json()["holdings"][0]
+    assert refreshed["network"] == "Tron"
+
+
+async def test_update_holding_network_can_be_cleared_with_null(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
+    holding = await _add_bitcoin(client, network="Ethereum")
+
+    resp = await client.patch(f"/crypto/holdings/{holding['asset_id']}", json={"network": None})
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["network"] is None
+
+
+async def test_update_holding_omitting_network_leaves_it_untouched(client: AsyncClient, monkeypatch):
+    """Partial PATCH semantics, same as every other endpoint in this app —
+    an empty body must not silently null out a field the caller didn't
+    mention (see schemas/crypto.py's CryptoHoldingUpdate)."""
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
+    holding = await _add_bitcoin(client, network="Ethereum")
+
+    resp = await client.patch(f"/crypto/holdings/{holding['asset_id']}", json={})
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["network"] == "Ethereum"
+
+
+async def test_update_holding_404_for_unknown_id(client: AsyncClient):
+    resp = await client.patch("/crypto/holdings/999999", json={"network": "Ethereum"})
+
+    assert resp.status_code == 404
