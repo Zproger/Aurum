@@ -5,16 +5,32 @@ export function getIntlLocale(language: Language = getLanguage()): string {
   return language === "ru" ? "ru-RU" : "en-US";
 }
 
+/** Builds the currency formatter every money helper here shares, so the
+ * symbol renders identically everywhere in the app.
+ *
+ * Intl's default `currencyDisplay: "symbol"` prefixes some symbols with a
+ * region marker to disambiguate them from same-symbol currencies — CNY
+ * becomes "CN¥", HKD "HK$", AUD "A$" — which reads like a typo next to the
+ * amount. "narrowSymbol" drops that marker ("¥", "$"), which is how these are
+ * actually written. The option is ES2020 and missing on older runtimes, where
+ * it throws RangeError; there we fall back to the default symbol form rather
+ * than losing formatting altogether. */
+function createCurrencyFormatter(currency: string, maximumFractionDigits: number): Intl.NumberFormat {
+  const locale = getIntlLocale();
+  const options: Intl.NumberFormatOptions = { style: "currency", currency, maximumFractionDigits };
+  try {
+    return new Intl.NumberFormat(locale, { ...options, currencyDisplay: "narrowSymbol" });
+  } catch {
+    return new Intl.NumberFormat(locale, options);
+  }
+}
+
 // `currency` defaults to the app's primary currency setting (Settings page)
 // — call sites only need to pass it explicitly when formatting a value known
 // to be in a *different* currency than that setting.
 export function formatCurrency(amount: number | string, currency: string = getCurrency()): string {
   const value = typeof amount === "string" ? Number(amount) : amount;
-  return new Intl.NumberFormat(getIntlLocale(), {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 0,
-  }).format(value);
+  return createCurrencyFormatter(currency, 0).format(value);
 }
 
 /** Same currency formatting as formatCurrency, but scales decimal precision
@@ -37,7 +53,7 @@ export function formatCryptoAmount(amount: number | string, currency: string = g
         // that — e.g. 0.000000006894 has 8 leading zeros, so this shows
         // 12 decimal places, landing exactly on "6894" and nothing more.
         Math.min(20, Math.max(0, -Math.floor(Math.log10(abs)) - 1) + 4);
-  return new Intl.NumberFormat(getIntlLocale(), { style: "currency", currency, maximumFractionDigits }).format(value);
+  return createCurrencyFormatter(currency, maximumFractionDigits).format(value);
 }
 
 export function formatSignedCurrency(amount: number | string, currency: string = getCurrency()): string {
