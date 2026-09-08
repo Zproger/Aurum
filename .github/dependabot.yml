@@ -1,21 +1,37 @@
 version: 2
 updates:
-  # Frontend npm dependencies.
+  # Frontend npm dependencies. Minor/patch bumps are low-risk and bundled
+  # into one PR; majors (real breaking-change risk) get their own group so
+  # they don't hide inside a pile of safe updates.
   - package-ecosystem: "npm"
     directory: "/frontend"
     schedule:
       interval: "weekly"
+    groups:
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
+      npm-major:
+        update-types: ["major"]
 
-  # Backend pip dependencies.
+  # Backend pip dependencies — same minor/patch vs. major split as npm above.
   - package-ecosystem: "pip"
     directory: "/backend"
     schedule:
       interval: "weekly"
+    groups:
+      pip-minor-patch:
+        update-types: ["minor", "patch"]
+      pip-major:
+        update-types: ["major"]
 
   # The GitHub Actions themselves (actions/checkout, setup-python, ...) used
   # in .github/workflows/ci.yml — these go stale too, and an outdated action
-  # can be its own supply-chain risk.
+  # can be its own supply-chain risk. Few enough that one group for
+  # everything is fine, no minor/major split needed.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      actions:
+        patterns: ["*"]
