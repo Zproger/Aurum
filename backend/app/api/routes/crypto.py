@@ -6,6 +6,7 @@ from app.schemas.crypto import (
     CryptoHistoryResponse,
     CryptoHoldingCreate,
     CryptoHoldingRead,
+    CryptoHoldingUpdate,
     CryptoPerformanceResponse,
     CryptoPortfolioCreate,
     CryptoPortfolioRead,
@@ -29,6 +30,7 @@ from app.services.crypto_service import (
     list_transactions,
     refresh_prices,
     search_coins,
+    update_holding,
     update_portfolio,
     update_transaction,
 )
@@ -87,6 +89,15 @@ async def create_holding_route(
     payload: CryptoHoldingCreate, session: AsyncSession = Depends(get_session)
 ) -> CryptoHoldingRead:
     return await create_holding(session, payload)
+
+
+@router.patch("/holdings/{asset_id}", response_model=CryptoHoldingRead)
+async def update_holding_route(
+    asset_id: int, payload: CryptoHoldingUpdate, session: AsyncSession = Depends(get_session)
+) -> CryptoHoldingRead:
+    """Updates holding-only metadata (currently just `network`) — quantity/
+    price/date go through the /transactions routes below instead."""
+    return await update_holding(session, asset_id, payload)
 
 
 @router.post("/holdings/{asset_id}/transactions", response_model=CryptoHoldingRead, status_code=201)

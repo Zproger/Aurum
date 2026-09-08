@@ -445,6 +445,11 @@ export interface CryptoHolding {
   // Lives on the underlying Asset — edited via PATCH /assets/{asset_id},
   // same endpoint every other Asset already uses.
   risk_level: RiskLevel;
+  // Free-form chain name (e.g. "Ethereum", "Tron") — not validated against
+  // a fixed list, since the same coin can carry different bridge/
+  // counterparty risk per chain and risk_level alone can't capture that.
+  // Edited via PATCH /crypto/holdings/{asset_id}.
+  network: string | null;
   // Both derived from the buy/sell log (see CryptoTransaction) — never
   // edited directly.
   quantity: string;
@@ -483,6 +488,12 @@ export interface CryptoHoldingCreateInput {
   // Omit to default to "high" server-side — crypto's own textbook risk
   // tier — but overridable per coin (a large-cap isn't a memecoin).
   risk_level?: RiskLevel;
+  // Free text, e.g. "Ethereum" or "Tron" — see CryptoHolding.network.
+  network?: string | null;
+}
+
+export interface CryptoHoldingUpdateInput {
+  network?: string | null;
 }
 
 export interface CryptoTransaction {

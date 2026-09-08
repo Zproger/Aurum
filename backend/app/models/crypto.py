@@ -75,6 +75,14 @@ class CryptoHolding(Base, TimestampMixin):
     symbol: Mapped[str] = mapped_column(String(20), nullable=False)
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     thumb_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Free-form, user-entered — which chain this specific holding actually
+    # sits on (e.g. "Ethereum", "Tron", "Arbitrum"). Deliberately not an
+    # enum: CoinGecko doesn't expose per-holding chain data (the same
+    # coingecko_id like "tether" covers the token across every chain it's
+    # issued on), and new chains appear too often for a fixed list to keep
+    # up. Lets a stablecoin held across several networks be told apart by
+    # counterparty/bridge risk, which risk_level alone can't capture.
+    network: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # Cached from the last successful sync (services/crypto_service.py) —
     # in the app's display currency (see AppSettings.currency). Null until

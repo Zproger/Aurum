@@ -17,6 +17,7 @@ import {
   useCryptoPortfolios,
   useDeleteCryptoHolding,
   useRefreshCryptoPrices,
+  useUpdateCryptoHolding,
   useUpdateCryptoHoldingRisk,
 } from "@/hooks/useCrypto";
 import { getIntlLocale } from "@/lib/format";
@@ -46,6 +47,7 @@ export function CryptoPage() {
   const refresh = useRefreshCryptoPrices();
   const deleteHolding = useDeleteCryptoHolding();
   const updateRisk = useUpdateCryptoHoldingRisk();
+  const updateHolding = useUpdateCryptoHolding();
 
   const [addOpen, setAddOpen] = useState(false);
   const [editingPortfolio, setEditingPortfolio] = useState<CryptoPortfolio | null>(null);
@@ -84,6 +86,10 @@ export function CryptoPage() {
 
   function handleRiskChange(holding: CryptoHolding, riskLevel: RiskLevel) {
     updateRisk.mutate({ assetId: holding.asset_id, riskLevel });
+  }
+
+  function handleNetworkChange(holding: CryptoHolding, network: string | null) {
+    updateHolding.mutate({ assetId: holding.asset_id, input: { network } });
   }
 
   function handleEditTransaction(transaction: CryptoTransaction) {
@@ -167,6 +173,7 @@ export function CryptoPage() {
                 onViewHistory={setHistoryHolding}
                 onDelete={handleDelete}
                 onRiskChange={handleRiskChange}
+                onNetworkChange={handleNetworkChange}
                 portfoliosById={portfolioFilter === null ? portfoliosById : undefined}
               />
             </>

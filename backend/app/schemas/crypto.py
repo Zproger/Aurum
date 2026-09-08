@@ -76,6 +76,18 @@ class CryptoHoldingCreate(BaseModel):
     # services/crypto_service.py) — but user-overridable at add time, since
     # not every coin carries the same risk (a large-cap vs. a memecoin).
     risk_level: RiskLevel = RiskLevel.HIGH
+    # Free-form chain name (e.g. "Ethereum", "Tron") — optional, not
+    # validated against a fixed list (see CryptoHolding.network).
+    network: str | None = Field(default=None, max_length=50)
+
+
+class CryptoHoldingUpdate(BaseModel):
+    """Holding-only metadata that isn't part of the buy/sell transaction
+    log — currently just `network`. Quantity/price/date changes go through
+    the /transactions routes instead (see add_transaction/update_transaction),
+    same split as risk_level living on the Asset via PATCH /assets/{id}."""
+
+    network: str | None = Field(default=None, max_length=50)
 
 
 class CryptoHoldingRead(BaseModel):
@@ -90,6 +102,8 @@ class CryptoHoldingRead(BaseModel):
     # same endpoint every other Asset already uses, no crypto-specific
     # update route needed.
     risk_level: RiskLevel
+    # Lives on CryptoHolding itself — editable via PATCH /crypto/holdings/{asset_id}.
+    network: str | None
 
     # Quantity and avg_buy_price are derived from the transaction log (see
     # services/crypto_service.py's _compute_position) — never stored.

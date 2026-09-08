@@ -1,4 +1,5 @@
 import { Bitcoin, Plus, Trash2 } from "lucide-react";
+import { NetworkPicker } from "@/components/crypto/NetworkPicker";
 import { RiskLevelPicker } from "@/components/crypto/RiskLevelPicker";
 import { formatCryptoAmount, maskAmount } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
@@ -11,6 +12,7 @@ interface CryptoHoldingsTableProps {
   onViewHistory: (holding: CryptoHolding) => void;
   onDelete: (holding: CryptoHolding) => void;
   onRiskChange: (holding: CryptoHolding, riskLevel: RiskLevel) => void;
+  onNetworkChange: (holding: CryptoHolding, network: string | null) => void;
   // Only passed while viewing the "All" tab — renders each row's portfolio
   // as a small colored badge under the coin name so it's still clear which
   // portfolio it belongs to. Omitted while a single portfolio is selected,
@@ -37,6 +39,7 @@ export function CryptoHoldingsTable({
   onViewHistory,
   onDelete,
   onRiskChange,
+  onNetworkChange,
   portfoliosById,
 }: CryptoHoldingsTableProps) {
   const { t } = useTranslation();
@@ -45,9 +48,13 @@ export function CryptoHoldingsTable({
     return <p className="py-10 text-center text-sm text-text-muted">{t("crypto.empty")}</p>;
   }
 
+  // Every network already typed anywhere in this table, for NetworkPicker's
+  // autocomplete — deduped and sorted, same idea as CryptoAddModal's own list.
+  const knownNetworks = Array.from(new Set(items.map((h) => h.network).filter((n): n is string => Boolean(n)))).sort();
+
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[880px] text-sm">
+      <table className="w-full min-w-[960px] text-sm">
         <thead>
           <tr className="border-b border-border text-left text-xs text-text-muted">
             <th className="py-2.5 pr-4 font-medium">{t("crypto.table.name")}</th>
@@ -59,6 +66,7 @@ export function CryptoHoldingsTable({
             <th className="whitespace-nowrap py-2.5 pr-4 text-right font-medium">{t("crypto.table.avgBuyPrice")}</th>
             <th className="whitespace-nowrap py-2.5 pr-4 text-right font-medium">{t("crypto.table.profitLoss")}</th>
             <th className="whitespace-nowrap py-2.5 pr-4 text-right font-medium">{t("crypto.table.risk")}</th>
+            <th className="whitespace-nowrap py-2.5 pr-4 text-right font-medium">{t("crypto.table.network")}</th>
             <th className="whitespace-nowrap py-2.5 pl-4 text-right font-medium">{t("crypto.table.actions")}</th>
           </tr>
         </thead>
@@ -154,8 +162,17 @@ export function CryptoHoldingsTable({
                   )}
                 </td>
                 <td className="py-3.5 pr-4 align-middle" onClick={(event) => event.stopPropagation()}>
-                  <span className="flex justify-end">
+                  <span className="flex w-full justify-end">
                     <RiskLevelPicker value={holding.risk_level} onChange={(level) => onRiskChange(holding, level)} />
+                  </span>
+                </td>
+                <td className="py-3.5 pr-4 align-middle" onClick={(event) => event.stopPropagation()}>
+                  <span className="flex w-full justify-end">
+                    <NetworkPicker
+                      value={holding.network}
+                      knownNetworks={knownNetworks}
+                      onChange={(network) => onNetworkChange(holding, network)}
+                    />
                   </span>
                 </td>
                 <td className="py-3.5 pl-4 align-middle">

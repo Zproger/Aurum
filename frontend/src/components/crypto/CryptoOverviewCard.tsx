@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, Eye, EyeOff } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { CryptoAllocationBody } from "@/components/crypto/CryptoAllocationBody";
 import { CryptoHistoryChartBody } from "@/components/crypto/CryptoHistoryChartBody";
+import { CryptoNetworkAllocationBody } from "@/components/crypto/CryptoNetworkAllocationBody";
 import { CryptoRangeSelector } from "@/components/crypto/CryptoRangeSelector";
 import { CryptoRiskAllocationBody } from "@/components/crypto/CryptoRiskAllocationBody";
 import { PillSelector } from "@/components/layout/PillSelector";
@@ -10,7 +11,7 @@ import { formatCurrency, formatSignedCurrency, maskAmount } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { CryptoHistoryResponse, CryptoHolding, CryptoRange } from "@/types";
 
-type OverviewTab = "history" | "allocation" | "risk";
+type OverviewTab = "history" | "allocation" | "risk" | "networks";
 
 interface CryptoOverviewCardProps {
   totalValue: number;
@@ -24,11 +25,12 @@ interface CryptoOverviewCardProps {
   onToggleHidden: () => void;
 }
 
-/** One card, three tabs — "History" (the value-over-time chart),
- * "Allocation" (a donut broken down by coin), and "Risk levels" (% of the
- * portfolio in each RiskLevel tier), same CoinMarketCap-style layout the
- * user asked for: switching views instead of stacking separate cards,
- * so the tab keeps its footprint on the page instead of growing it. The
+/** One card, four tabs — "History" (the value-over-time chart),
+ * "Allocation" (a donut broken down by coin), "Risk levels" (% of the
+ * portfolio in each RiskLevel tier), and "Networks" (a donut broken down by
+ * CryptoHolding.network) — same CoinMarketCap-style layout the user asked
+ * for: switching views instead of stacking separate cards, so the tab keeps
+ * its footprint on the page instead of growing it. The
  * total/eye toggle/change line stay in the shared header regardless of
  * which tab is active — only the content panel below switches. */
 export function CryptoOverviewCard({
@@ -80,6 +82,7 @@ export function CryptoOverviewCard({
               { value: "history" as const, label: t("crypto.overview.history") },
               { value: "allocation" as const, label: t("crypto.overview.allocation") },
               { value: "risk" as const, label: t("crypto.overview.risk") },
+              { value: "networks" as const, label: t("crypto.overview.networks") },
             ]}
             value={tab}
             onChange={setTab}
@@ -92,8 +95,10 @@ export function CryptoOverviewCard({
           <CryptoHistoryChartBody history={history} isLoading={isHistoryLoading} hidden={hidden} />
         ) : tab === "allocation" ? (
           <CryptoAllocationBody holdings={holdings} isLoading={isHoldingsLoading} hidden={hidden} />
-        ) : (
+        ) : tab === "risk" ? (
           <CryptoRiskAllocationBody holdings={holdings} isLoading={isHoldingsLoading} hidden={hidden} />
+        ) : (
+          <CryptoNetworkAllocationBody holdings={holdings} isLoading={isHoldingsLoading} hidden={hidden} />
         )}
       </CardContent>
     </Card>

@@ -581,6 +581,7 @@ of the whole request failing.
 | `GET` | `/crypto/holdings` | List holdings with live price, 1h/24h/7d % change, computed quantity/avg buy price/P&L. Also runs the lazy once-a-day auto-refresh. |
 | `POST` | `/crypto/refresh` | Force a price refresh right now, bypassing the 24h window. |
 | `POST` | `/crypto/holdings` | Add a new holding — its first buy transaction, inline. Fetches today's price immediately so it isn't `null` until the next sync. |
+| `PATCH` | `/crypto/holdings/{asset_id}` | Update holding-only metadata (currently just `network`) — quantity/price/date go through the transaction endpoints below instead, and `risk_level` through `PATCH /assets/{asset_id}` (see [Assets & Net Worth](#assets--net-worth)). |
 | `POST` | `/crypto/holdings/{asset_id}/transactions` | Buy more of, or sell some of, a coin already tracked. Never calls CoinGecko — value is recomputed from the last cached price. `400` if a sell would exceed what's currently held. |
 | `GET` | `/crypto/holdings/{asset_id}/transactions` | Full buy/sell history for one holding, newest first. |
 | `PATCH` | `/crypto/transactions/{transaction_id}` | Edit an existing transaction (partial — send only the fields you're changing). Never calls CoinGecko. `400` if changing a sell's quantity would exceed what the rest of the log leaves held. |
@@ -599,14 +600,28 @@ of the whole request failing.
   "quantity": "0.05",
   "price_per_unit": "55000",
   "date": "2026-08-01",
-  "note": null
+  "note": null,
+  "risk_level": "high",
+  "network": null
 }
 ```
 
 `coingecko_id` is CoinGecko's own stable id (not the ticker — tickers collide across unrelated
 coins) — get it from `/crypto/search` rather than guessing. `quantity`/`price_per_unit` support up to
 18 decimal places (wei-level token amounts). `price_per_unit` is what you actually paid, in the app's
-display currency — it's stored as-is, never re-derived from market data later.
+display currency — it's stored as-is, never re-derived from market data later. `risk_level` is
+optional, defaults to `high`. `network` is optional free text (e.g. `"Ethereum"`, `"Tron"`) — not
+validated against a fixed list, since the same coin can be issued on chains CoinGecko doesn't
+distinguish by `coingecko_id` alone (a stablecoin held across several networks carries different
+bridge/counterparty risk per chain, which `risk_level` alone can't capture).
+
+**Update holding metadata** (`PATCH /crypto/holdings/{asset_id}`):
+
+```json
+{ "network": "Arbitrum" }
+```
+
+Partial like every other `PATCH` — omit `network` to leave it unchanged, send `null` to clear it.
 
 **Add a transaction** (`POST /crypto/holdings/{asset_id}/transactions`):
 
@@ -630,6 +645,8 @@ display currency — it's stored as-is, never re-derived from market data later.
       "symbol": "BTC",
       "name": "Bitcoin",
       "thumb_url": "https://...",
+      "risk_level": "high",
+      "network": null,
       "quantity": "0.05",
       "avg_buy_price": "55000.00",
       "current_price": "61000.00",

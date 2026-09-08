@@ -3,6 +3,7 @@ import type {
   CryptoHistoryResponse,
   CryptoHolding,
   CryptoHoldingCreateInput,
+  CryptoHoldingUpdateInput,
   CryptoPerformanceResponse,
   CryptoPortfolio,
   CryptoPortfolioInput,
@@ -46,6 +47,13 @@ export function refreshCryptoPrices(portfolioId?: number | null) {
 
 export function createCryptoHolding(input: CryptoHoldingCreateInput) {
   return api.post<CryptoHolding>("/crypto/holdings", input);
+}
+
+// Holding-only metadata (currently just `network`) — quantity/price/date
+// live on the transaction log, risk_level on the underlying Asset (see
+// updateCryptoHoldingRisk above).
+export function updateCryptoHolding(assetId: number, input: CryptoHoldingUpdateInput) {
+  return api.patch<CryptoHolding>(`/crypto/holdings/${assetId}`, input);
 }
 
 // Buy more of, or sell some of, a coin already being tracked.

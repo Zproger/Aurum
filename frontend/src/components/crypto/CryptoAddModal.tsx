@@ -4,7 +4,7 @@ import { searchCryptoCoins } from "@/api/crypto";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Input, Label, Select } from "@/components/ui/Input";
-import { useCreateCryptoHolding, useCryptoPortfolios } from "@/hooks/useCrypto";
+import { useCreateCryptoHolding, useCryptoHoldings, useCryptoPortfolios } from "@/hooks/useCrypto";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { CryptoSearchResult, RiskLevel } from "@/types";
 
@@ -26,6 +26,13 @@ export function CryptoAddModal({ open, onClose, defaultPortfolioId }: CryptoAddM
   const { t } = useTranslation();
   const createHolding = useCreateCryptoHolding();
   const { data: portfolios } = useCryptoPortfolios();
+  // Every portfolio's holdings, purely to build the network datalist below
+  // (already-typed values like "Ethereum"/"Tron" as autocomplete, not a
+  // fixed list — see CryptoHolding.network).
+  const { data: allHoldings } = useCryptoHoldings();
+  const knownNetworks = Array.from(
+    new Set((allHoldings?.holdings ?? []).map((h) => h.network).filter((n): n is string => Boolean(n)))
+  ).sort();
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CryptoSearchResult[]>([]);
@@ -39,6 +46,7 @@ export function CryptoAddModal({ open, onClose, defaultPortfolioId }: CryptoAddM
   // Defaults to "high", same as the backend default — crypto is this app's
   // own textbook HIGH risk example — but overridable per coin here.
   const [riskLevel, setRiskLevel] = useState<RiskLevel>("high");
+  const [network, setNetwork] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -50,6 +58,7 @@ export function CryptoAddModal({ open, onClose, defaultPortfolioId }: CryptoAddM
     setPricePerUnit("");
     setDate(new Date().toISOString().slice(0, 10));
     setRiskLevel("high");
+    setNetwork("");
     setSearchError(null);
     setSaveError(null);
   }, [open]);
@@ -106,6 +115,7 @@ export function CryptoAddModal({ open, onClose, defaultPortfolioId }: CryptoAddM
         price_per_unit: pricePerUnit,
         date,
         risk_level: riskLevel,
+        network: network.trim() || null,
       });
       onClose();
     } catch {
@@ -240,6 +250,22 @@ export function CryptoAddModal({ open, onClose, defaultPortfolioId }: CryptoAddM
                 </option>
               ))}
             </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="crypto-network">{t("crypto.form.networkLabel")}</Label>
+            <Input
+              id="crypto-network"
+              list="crypto-known-networks"
+              placeholder={t("crypto.form.networkPlaceholder")}
+              value={network}
+              onChange={(event) => setNetwork(event.target.value.toUpperCase())}
+            />
+            <datalist id="crypto-known-networks">
+              {knownNetworks.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
           </div>
 
           {saveError && <p className="text-sm text-danger">{saveError}</p>}

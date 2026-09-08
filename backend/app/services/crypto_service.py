@@ -42,6 +42,7 @@ from app.schemas.crypto import (
     CryptoHistoryResponse,
     CryptoHoldingCreate,
     CryptoHoldingRead,
+    CryptoHoldingUpdate,
     CryptoPerformancePoint,
     CryptoPerformanceResponse,
     CryptoPortfolioCreate,
@@ -217,6 +218,7 @@ def _to_read(holding: CryptoHolding) -> CryptoHoldingRead:
         name=holding.name,
         thumb_url=holding.thumb_url,
         risk_level=holding.asset.risk_level,
+        network=holding.network,
         quantity=quantity,
         avg_buy_price=avg_buy_price,
         current_price=current_price,
@@ -442,6 +444,7 @@ async def create_holding(session: AsyncSession, payload: CryptoHoldingCreate) ->
         symbol=payload.symbol.upper(),
         name=payload.name,
         thumb_url=payload.thumb_url,
+        network=payload.network,
     )
     # Wired explicitly rather than left for a lazy load off asset_id — under
     # async SQLAlchemy, a relationship access with no eager load and no prior
@@ -484,6 +487,17 @@ async def create_holding(session: AsyncSession, payload: CryptoHoldingCreate) ->
     except httpx.HTTPError:
         pass  # holding is still created — the next daily/manual sync will price it
 
+    await session.commit()
+    return _to_read(holding)
+
+
+async def update_holding(session: AsyncSession, asset_id: int, payload: CryptoHoldingUpdate) -> CryptoHoldingRead:
+    """Updates CryptoHolding-only metadata — currently just `network`.
+    Quantity/price/date go through add_transaction/update_transaction
+    instead; risk_level lives on the Asset via PATCH /assets/{asset_id}."""
+    holding = await _get_holding_or_404(session, asset_id)
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(holding, field, value)
     await session.commit()
     return _to_read(holding)
 
