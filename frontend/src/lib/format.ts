@@ -5,24 +5,21 @@ export function getIntlLocale(language: Language = getLanguage()): string {
   return language === "ru" ? "ru-RU" : "en-US";
 }
 
-/** Builds the currency formatter every money helper here shares, so the
- * symbol renders identically everywhere in the app.
+/** Builds the currency formatter every money helper here shares, so amounts
+ * are labelled identically everywhere in the app.
  *
- * Intl's default `currencyDisplay: "symbol"` prefixes some symbols with a
- * region marker to disambiguate them from same-symbol currencies — CNY
- * becomes "CN¥", HKD "HK$", AUD "A$" — which reads like a typo next to the
- * amount. "narrowSymbol" drops that marker ("¥", "$"), which is how these are
- * actually written. The option is ES2020 and missing on older runtimes, where
- * it throws RangeError; there we fall back to the default symbol form rather
- * than losing formatting altogether. */
+ * `currencyDisplay: "code"` prints the ISO 4217 code ("614 CNY", "614 USD")
+ * instead of a symbol. Intl's default "symbol" mode prefixes the symbols it
+ * considers ambiguous with a region marker — CNY renders as "CN¥", HKD as
+ * "HK$" — which reads like a typo next to the amount, and the codes stay
+ * unambiguous across all the currencies in lib/currency.ts. */
 function createCurrencyFormatter(currency: string, maximumFractionDigits: number): Intl.NumberFormat {
-  const locale = getIntlLocale();
-  const options: Intl.NumberFormatOptions = { style: "currency", currency, maximumFractionDigits };
-  try {
-    return new Intl.NumberFormat(locale, { ...options, currencyDisplay: "narrowSymbol" });
-  } catch {
-    return new Intl.NumberFormat(locale, options);
-  }
+  return new Intl.NumberFormat(getIntlLocale(), {
+    style: "currency",
+    currency,
+    currencyDisplay: "code",
+    maximumFractionDigits,
+  });
 }
 
 // `currency` defaults to the app's primary currency setting (Settings page)
