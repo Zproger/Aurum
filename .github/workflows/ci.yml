@@ -64,3 +64,8 @@ jobs:
       # and a type error a PR might introduce, same as `npm run build`
       # locally before shipping a change.
       - run: npm run build
+      # Vitest over the pure-logic modules (lib/format.ts, the Crypto tab's
+      # allocation math) — kept in the same job rather than a new one so a
+      # renamed job doesn't silently stop matching branch protection's
+      # required status checks.
+      - run: npm run test

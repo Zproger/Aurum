@@ -82,7 +82,7 @@ export function maskAmount(formatted: string, hidden: boolean): string {
 export function trimTrailingZeros(value: string): string {
   if (!value.includes(".")) return value;
   const trimmed = value.replace(/0+$/, "").replace(/\.$/, "");
-  return trimmed === "" || trimmed === "-" ? "0" : trimmed;
+  return trimmed === "" || trimmed === "-" || trimmed === "-0" ? "0" : trimmed;
 }
 
 const MONTH_LABELS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;

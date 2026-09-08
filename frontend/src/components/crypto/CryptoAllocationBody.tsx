@@ -26,7 +26,7 @@ const SERIES_COLORS = [
 const OTHER_COLOR = "var(--series-other)";
 const MAX_SLICES = SERIES_COLORS.length;
 
-interface Slice {
+export interface Slice {
   key: string;
   name: string;
   symbol: string | null;
@@ -34,7 +34,9 @@ interface Slice {
   color: string;
 }
 
-function buildSlices(holdings: CryptoHolding[]): Slice[] {
+// Exported for direct unit testing (see CryptoAllocationBody.test.ts) —
+// the donut/table JSX below isn't worth rendering just to check the math.
+export function buildSlices(holdings: CryptoHolding[]): Slice[] {
   const priced = holdings
     .filter((h) => h.value !== null && Number(h.value) > 0)
     .map((h) => ({ key: String(h.asset_id), name: h.name, symbol: h.symbol, amount: Number(h.value) }))

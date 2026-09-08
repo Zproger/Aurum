@@ -8,15 +8,59 @@ interface CryptoRiskAllocationBodyProps {
   hidden: boolean;
 }
 
-// Same status-color convention as NetWorthPage's own RiskAllocationCard
-// (low reads as "good", high as "critical") — not a categorical hue, so
-// hardcoded here rather than threaded through from the backend.
+// Same traffic-light colors as the holdings table's own RiskLevelPicker
+// (green/orange/red) — kept in sync so a coin's risk reads identically in
+// both places on the Crypto tab. --series-4 is the dataviz skill's
+// validated yellow/orange slot.
 const TIER_COLOR: Record<RiskLevel, string> = {
   low: "var(--success)",
-  medium: "var(--text-muted)",
+  medium: "var(--series-4)",
   high: "var(--danger)",
 };
 const RISK_LEVELS: RiskLevel[] = ["low", "medium", "high"];
+
+export interface RiskTierItem {
+  symbol: string;
+  name: string;
+  value: number;
+  percent: number;
+}
+
+export interface RiskTier {
+  level: RiskLevel;
+  value: number;
+  percent: number;
+  items: RiskTierItem[];
+}
+
+/** Groups priced holdings into the three RiskLevel tiers with each tier's
+ * share of total portfolio value, and each item's share within its own
+ * tier — pulled out of the component so it's testable without rendering
+ * (see format.test.ts-style coverage in CryptoRiskAllocationBody.test.ts). */
+export function computeRiskTiers(holdings: CryptoHolding[]): RiskTier[] {
+  // Unpriced holdings (CoinGecko never successfully priced them yet) can't
+  // contribute a % of portfolio value — same "best data on hand" principle
+  // the rest of the Crypto tab already follows for a null value/price.
+  const priced = holdings.filter((h) => h.value !== null);
+  const totalValue = priced.reduce((sum, h) => sum + Number(h.value), 0);
+
+  return RISK_LEVELS.map((level) => {
+    const items = priced
+      .filter((h) => h.risk_level === level)
+      .map((h) => ({ symbol: h.symbol, name: h.name, value: Number(h.value) }))
+      .sort((a, b) => b.value - a.value);
+    const tierValue = items.reduce((sum, item) => sum + item.value, 0);
+    return {
+      level,
+      value: tierValue,
+      percent: totalValue > 0 ? (tierValue / totalValue) * 100 : 0,
+      items: items.map((item) => ({
+        ...item,
+        percent: tierValue > 0 ? (item.value / tierValue) * 100 : 0,
+      })),
+    };
+  });
+}
 
 /** The "Risk levels" tab's content inside CryptoOverviewCard — same
  * three-tier layout as NetWorthPage's own RiskAllocationCard, but scoped to
@@ -34,28 +78,7 @@ export function CryptoRiskAllocationBody({ holdings, isLoading, hidden }: Crypto
     return <p className="py-10 text-center text-sm text-text-muted">{t("crypto.empty")}</p>;
   }
 
-  // Unpriced holdings (CoinGecko never successfully priced them yet) can't
-  // contribute a % of portfolio value — same "best data on hand" principle
-  // the rest of the Crypto tab already follows for a null value/price.
-  const priced = holdings.filter((h) => h.value !== null);
-  const totalValue = priced.reduce((sum, h) => sum + Number(h.value), 0);
-
-  const tiers = RISK_LEVELS.map((level) => {
-    const items = priced
-      .filter((h) => h.risk_level === level)
-      .map((h) => ({ symbol: h.symbol, name: h.name, value: Number(h.value) }))
-      .sort((a, b) => b.value - a.value);
-    const tierValue = items.reduce((sum, item) => sum + item.value, 0);
-    return {
-      level,
-      value: tierValue,
-      percent: totalValue > 0 ? (tierValue / totalValue) * 100 : 0,
-      items: items.map((item) => ({
-        ...item,
-        percent: tierValue > 0 ? (item.value / tierValue) * 100 : 0,
-      })),
-    };
-  });
+  const tiers = computeRiskTiers(holdings);
 
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

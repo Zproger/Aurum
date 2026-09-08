@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # title, /api/health (which the frontend reads to show it in Settings), and
 # embedded in exported backups so an old file can be told apart from a
 # current one.
-APP_VERSION = "1.1.5"
+APP_VERSION = "1.1.6"
 
 
 class Settings(BaseSettings):
