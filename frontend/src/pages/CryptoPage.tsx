@@ -17,10 +17,11 @@ import {
   useCryptoPortfolios,
   useDeleteCryptoHolding,
   useRefreshCryptoPrices,
+  useUpdateCryptoHoldingRisk,
 } from "@/hooks/useCrypto";
 import { getIntlLocale } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
-import type { CryptoHolding, CryptoPortfolio, CryptoRange, CryptoTransaction } from "@/types";
+import type { CryptoHolding, CryptoPortfolio, CryptoRange, CryptoTransaction, RiskLevel } from "@/types";
 
 function formatSyncedAt(iso: string): string {
   return new Intl.DateTimeFormat(getIntlLocale(), { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
@@ -44,6 +45,7 @@ export function CryptoPage() {
   const { data: performance90d, isLoading: isPerformance90dLoading } = useCrypto90dPerformance(range, portfolioFilter);
   const refresh = useRefreshCryptoPrices();
   const deleteHolding = useDeleteCryptoHolding();
+  const updateRisk = useUpdateCryptoHoldingRisk();
 
   const [addOpen, setAddOpen] = useState(false);
   const [editingPortfolio, setEditingPortfolio] = useState<CryptoPortfolio | null>(null);
@@ -78,6 +80,10 @@ export function CryptoPage() {
     if (window.confirm(t("crypto.confirmDelete", { name: holding.name }))) {
       deleteHolding.mutate(holding.asset_id);
     }
+  }
+
+  function handleRiskChange(holding: CryptoHolding, riskLevel: RiskLevel) {
+    updateRisk.mutate({ assetId: holding.asset_id, riskLevel });
   }
 
   function handleEditTransaction(transaction: CryptoTransaction) {
@@ -160,6 +166,7 @@ export function CryptoPage() {
                 onTrade={openTradeModal}
                 onViewHistory={setHistoryHolding}
                 onDelete={handleDelete}
+                onRiskChange={handleRiskChange}
                 portfoliosById={portfolioFilter === null ? portfoliosById : undefined}
               />
             </>

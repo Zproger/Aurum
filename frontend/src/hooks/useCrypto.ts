@@ -12,10 +12,11 @@ import {
   fetchCryptoPortfolios,
   fetchCryptoTransactions,
   refreshCryptoPrices,
+  updateCryptoHoldingRisk,
   updateCryptoPortfolio,
   updateCryptoTransaction,
 } from "@/api/crypto";
-import type { CryptoHoldingCreateInput, CryptoPortfolioInput, CryptoRange, CryptoTransactionInput } from "@/types";
+import type { CryptoHoldingCreateInput, CryptoPortfolioInput, CryptoRange, CryptoTransactionInput, RiskLevel } from "@/types";
 
 function useInvalidateCrypto() {
   const queryClient = useQueryClient();
@@ -140,6 +141,15 @@ export function useDeleteCryptoHolding() {
   const invalidate = useInvalidateCrypto();
   return useMutation({
     mutationFn: (assetId: number) => deleteCryptoHolding(assetId),
+    onSuccess: invalidate,
+  });
+}
+
+export function useUpdateCryptoHoldingRisk() {
+  const invalidate = useInvalidateCrypto();
+  return useMutation({
+    mutationFn: ({ assetId, riskLevel }: { assetId: number; riskLevel: RiskLevel }) =>
+      updateCryptoHoldingRisk(assetId, riskLevel),
     onSuccess: invalidate,
   });
 }

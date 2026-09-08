@@ -442,6 +442,9 @@ export interface CryptoHolding {
   symbol: string;
   name: string;
   thumb_url: string | null;
+  // Lives on the underlying Asset — edited via PATCH /assets/{asset_id},
+  // same endpoint every other Asset already uses.
+  risk_level: RiskLevel;
   // Both derived from the buy/sell log (see CryptoTransaction) — never
   // edited directly.
   quantity: string;
@@ -477,6 +480,9 @@ export interface CryptoHoldingCreateInput {
   price_per_unit: string;
   date: string;
   note?: string | null;
+  // Omit to default to "high" server-side — crypto's own textbook risk
+  // tier — but overridable per coin (a large-cap isn't a memecoin).
+  risk_level?: RiskLevel;
 }
 
 export interface CryptoTransaction {

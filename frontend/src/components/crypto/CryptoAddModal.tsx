@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { useCreateCryptoHolding, useCryptoPortfolios } from "@/hooks/useCrypto";
-import { useTranslation } from "@/lib/i18n";
-import type { CryptoSearchResult } from "@/types";
+import { useTranslation, type TranslationKey } from "@/lib/i18n";
+import type { CryptoSearchResult, RiskLevel } from "@/types";
+
+const RISK_LEVELS: RiskLevel[] = ["low", "medium", "high"];
 
 interface CryptoAddModalProps {
   open: boolean;
@@ -34,6 +36,9 @@ export function CryptoAddModal({ open, onClose, defaultPortfolioId }: CryptoAddM
   const [quantity, setQuantity] = useState("");
   const [pricePerUnit, setPricePerUnit] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  // Defaults to "high", same as the backend default — crypto is this app's
+  // own textbook HIGH risk example — but overridable per coin here.
+  const [riskLevel, setRiskLevel] = useState<RiskLevel>("high");
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -44,6 +49,7 @@ export function CryptoAddModal({ open, onClose, defaultPortfolioId }: CryptoAddM
     setQuantity("");
     setPricePerUnit("");
     setDate(new Date().toISOString().slice(0, 10));
+    setRiskLevel("high");
     setSearchError(null);
     setSaveError(null);
   }, [open]);
@@ -99,6 +105,7 @@ export function CryptoAddModal({ open, onClose, defaultPortfolioId }: CryptoAddM
         quantity,
         price_per_unit: pricePerUnit,
         date,
+        risk_level: riskLevel,
       });
       onClose();
     } catch {
@@ -218,6 +225,21 @@ export function CryptoAddModal({ open, onClose, defaultPortfolioId }: CryptoAddM
               value={date}
               onChange={(event) => setDate(event.target.value)}
             />
+          </div>
+
+          <div>
+            <Label htmlFor="crypto-risk">{t("netWorth.form.riskLevelLabel")}</Label>
+            <Select
+              id="crypto-risk"
+              value={riskLevel}
+              onChange={(event) => setRiskLevel(event.target.value as RiskLevel)}
+            >
+              {RISK_LEVELS.map((level) => (
+                <option key={level} value={level}>
+                  {t(`netWorth.riskLevel.${level}` as TranslationKey)}
+                </option>
+              ))}
+            </Select>
           </div>
 
           {saveError && <p className="text-sm text-danger">{saveError}</p>}

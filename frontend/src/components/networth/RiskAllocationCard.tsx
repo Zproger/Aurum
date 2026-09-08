@@ -30,7 +30,7 @@ export function RiskAllocationCard({ riskLevels, isLoading }: RiskAllocationCard
                 <p className="mt-1.5 text-xl font-semibold tabular-nums text-text-primary">
                   {formatCurrency(tier.total_value)}
                 </p>
-                <p className="mt-1 text-xs text-text-muted">{tier.percent.toFixed(0)}% {t("netWorth.riskAllocationOfCapital")}</p>
+                <p className="mt-1 text-xs text-text-muted">{tier.percent.toFixed(1)}% {t("netWorth.riskAllocationOfCapital")}</p>
 
                 {tier.items.length > 0 && (
                   <ul className="mt-3 space-y-1.5 border-t border-gridline pt-3">
@@ -46,7 +46,7 @@ export function RiskAllocationCard({ riskLevels, isLoading }: RiskAllocationCard
                           />
                         </span>
                         <span className="w-8 shrink-0 text-right text-[11px] tabular-nums text-text-muted">
-                          {item.percent.toFixed(0)}%
+                          {item.percent.toFixed(1)}%
                         </span>
                       </li>
                     ))}

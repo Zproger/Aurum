@@ -36,7 +36,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import get_settings
 from app.models.asset import Asset, AssetValuation
 from app.models.crypto import CryptoHolding, CryptoPortfolio, CryptoSyncState, CryptoTransaction
-from app.models.enums import AssetClass, CapitalRole, CryptoTransactionType, RiskLevel
+from app.models.enums import AssetClass, CapitalRole, CryptoTransactionType
 from app.schemas.crypto import (
     CryptoHistoryPoint,
     CryptoHistoryResponse,
@@ -82,7 +82,7 @@ AUTO_REFRESH_INTERVAL = timedelta(hours=24)
 # two points, not the smooth intraday line a denser data source could draw.
 CRYPTO_RANGE_DAYS: dict[str, int] = {"7d": 7, "30d": 30, "90d": 90}
 
-_EAGER = (selectinload(CryptoHolding.transactions),)
+_EAGER = (selectinload(CryptoHolding.transactions), selectinload(CryptoHolding.asset))
 
 
 def _require_api_key() -> str:
@@ -216,6 +216,7 @@ def _to_read(holding: CryptoHolding) -> CryptoHoldingRead:
         symbol=holding.symbol,
         name=holding.name,
         thumb_url=holding.thumb_url,
+        risk_level=holding.asset.risk_level,
         quantity=quantity,
         avg_buy_price=avg_buy_price,
         current_price=current_price,
@@ -424,10 +425,12 @@ async def create_holding(session: AsyncSession, payload: CryptoHoldingCreate) ->
         asset_class=AssetClass.CRYPTO,
         currency=settings.currency,
         capital_role=CapitalRole.NEUTRAL,
-        # Defaults to HIGH, not the Asset model's own MEDIUM default — matches
-        # this app's own risk-level copy, which names crypto as the textbook
-        # HIGH example (see lib/i18n.ts's netWorth.riskLevelFormHint.high).
-        risk_level=RiskLevel.HIGH,
+        # User-chosen at add time (see CryptoHoldingCreate), defaulting to
+        # HIGH — not the Asset model's own MEDIUM default — since this app's
+        # own risk-level copy names crypto as the textbook HIGH example (see
+        # lib/i18n.ts's netWorth.riskLevelFormHint.high). Editable later via
+        # PATCH /assets/{asset_id}, same as any other Asset.
+        risk_level=payload.risk_level,
     )
     session.add(asset)
     await session.flush()
@@ -440,6 +443,11 @@ async def create_holding(session: AsyncSession, payload: CryptoHoldingCreate) ->
         name=payload.name,
         thumb_url=payload.thumb_url,
     )
+    # Wired explicitly rather than left for a lazy load off asset_id — under
+    # async SQLAlchemy, a relationship access with no eager load and no prior
+    # assignment raises MissingGreenlet, and _to_read (called at the end of
+    # this function) reads holding.asset.risk_level.
+    holding.asset = asset
     session.add(holding)
 
     holding.transactions.append(

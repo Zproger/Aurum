@@ -1,7 +1,8 @@
 import { Bitcoin, Plus, Trash2 } from "lucide-react";
+import { RiskLevelPicker } from "@/components/crypto/RiskLevelPicker";
 import { formatCryptoAmount, maskAmount } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
-import type { CryptoHolding, CryptoPortfolio } from "@/types";
+import type { CryptoHolding, CryptoPortfolio, RiskLevel } from "@/types";
 
 interface CryptoHoldingsTableProps {
   items: CryptoHolding[];
@@ -9,6 +10,7 @@ interface CryptoHoldingsTableProps {
   onTrade: (holding: CryptoHolding) => void;
   onViewHistory: (holding: CryptoHolding) => void;
   onDelete: (holding: CryptoHolding) => void;
+  onRiskChange: (holding: CryptoHolding, riskLevel: RiskLevel) => void;
   // Only passed while viewing the "All" tab — renders each row's portfolio
   // as a small colored badge under the coin name so it's still clear which
   // portfolio it belongs to. Omitted while a single portfolio is selected,
@@ -34,6 +36,7 @@ export function CryptoHoldingsTable({
   onTrade,
   onViewHistory,
   onDelete,
+  onRiskChange,
   portfoliosById,
 }: CryptoHoldingsTableProps) {
   const { t } = useTranslation();
@@ -44,18 +47,19 @@ export function CryptoHoldingsTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[860px] text-sm">
+      <table className="w-full min-w-[880px] text-sm">
         <thead>
           <tr className="border-b border-border text-left text-xs text-text-muted">
-            <th className="py-2 pr-3 font-medium">{t("crypto.table.name")}</th>
-            <th className="py-2 pr-3 text-right font-medium">{t("crypto.table.price")}</th>
-            <th className="py-2 pr-3 text-right font-medium">{t("crypto.table.change1h")}</th>
-            <th className="py-2 pr-3 text-right font-medium">{t("crypto.table.change24h")}</th>
-            <th className="py-2 pr-3 text-right font-medium">{t("crypto.table.change7d")}</th>
-            <th className="py-2 pr-3 text-right font-medium">{t("crypto.table.holdings")}</th>
-            <th className="py-2 pr-3 text-right font-medium">{t("crypto.table.avgBuyPrice")}</th>
-            <th className="py-2 pr-3 text-right font-medium">{t("crypto.table.profitLoss")}</th>
-            <th className="py-2 pl-3 text-right font-medium">{t("crypto.table.actions")}</th>
+            <th className="py-2.5 pr-4 font-medium">{t("crypto.table.name")}</th>
+            <th className="whitespace-nowrap py-2.5 pr-4 text-right font-medium">{t("crypto.table.price")}</th>
+            <th className="whitespace-nowrap py-2.5 pr-4 text-right font-medium">{t("crypto.table.change1h")}</th>
+            <th className="whitespace-nowrap py-2.5 pr-4 text-right font-medium">{t("crypto.table.change24h")}</th>
+            <th className="whitespace-nowrap py-2.5 pr-4 text-right font-medium">{t("crypto.table.change7d")}</th>
+            <th className="whitespace-nowrap py-2.5 pr-4 text-right font-medium">{t("crypto.table.holdings")}</th>
+            <th className="whitespace-nowrap py-2.5 pr-4 text-right font-medium">{t("crypto.table.avgBuyPrice")}</th>
+            <th className="whitespace-nowrap py-2.5 pr-4 text-right font-medium">{t("crypto.table.profitLoss")}</th>
+            <th className="whitespace-nowrap py-2.5 pr-4 text-right font-medium">{t("crypto.table.risk")}</th>
+            <th className="whitespace-nowrap py-2.5 pl-4 text-right font-medium">{t("crypto.table.actions")}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gridline">
@@ -76,7 +80,7 @@ export function CryptoHoldingsTable({
                 onClick={() => onViewHistory(holding)}
                 className="cursor-pointer hover:bg-surface-2"
               >
-                <td className="py-3 pr-3">
+                <td className="py-3.5 pr-4 align-middle">
                   <div className="flex items-center gap-2.5">
                     {holding.thumb_url ? (
                       <img src={holding.thumb_url} alt="" className="h-7 w-7 shrink-0 rounded-full" />
@@ -86,11 +90,16 @@ export function CryptoHoldingsTable({
                       </span>
                     )}
                     <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium text-text-primary">{holding.name}</span>
-                      <span className="flex items-center gap-1.5 text-xs text-text-muted">
-                        {holding.symbol}
+                      <span className="block truncate text-sm font-medium text-text-primary" title={holding.name}>
+                        {holding.name}
+                      </span>
+                      <span className="mt-0.5 flex items-center gap-1.5 text-xs text-text-muted">
+                        <span className="shrink-0">{holding.symbol}</span>
                         {portfoliosById && (
-                          <span className="flex items-center gap-1 truncate">
+                          <span
+                            className="flex min-w-0 items-center gap-1"
+                            title={portfoliosById.get(holding.portfolio_id)?.name}
+                          >
                             <span
                               className="h-1.5 w-1.5 shrink-0 rounded-full"
                               style={{
@@ -104,38 +113,38 @@ export function CryptoHoldingsTable({
                     </span>
                   </div>
                 </td>
-                <td className="py-3 pr-3 text-right tabular-nums text-text-primary">
+                <td className="py-3.5 pr-4 text-right align-middle tabular-nums text-text-primary">
                   {holding.current_price !== null
                     ? maskAmount(formatCryptoAmount(holding.current_price), hidden)
                     : t("crypto.pendingPrice")}
                 </td>
-                <td className="py-3 pr-3 text-right">
+                <td className="py-3.5 pr-4 text-right align-middle">
                   <PercentCell value={holding.price_change_1h} />
                 </td>
-                <td className="py-3 pr-3 text-right">
+                <td className="py-3.5 pr-4 text-right align-middle">
                   <PercentCell value={holding.price_change_24h} />
                 </td>
-                <td className="py-3 pr-3 text-right">
+                <td className="py-3.5 pr-4 text-right align-middle">
                   <PercentCell value={holding.price_change_7d} />
                 </td>
-                <td className="py-3 pr-3 text-right">
+                <td className="py-3.5 pr-4 text-right align-middle">
                   <span className="block tabular-nums text-text-primary">
                     {holding.value !== null ? maskAmount(formatCryptoAmount(holding.value), hidden) : t("crypto.pendingPrice")}
                   </span>
-                  <span className="block text-xs tabular-nums text-text-muted">
+                  <span className="mt-0.5 block text-xs tabular-nums text-text-muted">
                     {maskAmount(`${Number(holding.quantity)} ${holding.symbol}`, hidden)}
                   </span>
                 </td>
-                <td className="py-3 pr-3 text-right tabular-nums text-text-primary">
+                <td className="py-3.5 pr-4 text-right align-middle tabular-nums text-text-primary">
                   {holding.avg_buy_price !== null ? maskAmount(formatCryptoAmount(holding.avg_buy_price), hidden) : "—"}
                 </td>
-                <td className="py-3 pr-3 text-right">
+                <td className="py-3.5 pr-4 text-right align-middle">
                   {holding.profit_loss !== null && holding.profit_loss_percent !== null ? (
                     <>
                       <span className="block tabular-nums" style={{ color: profitColor }}>
                         {maskAmount(`${sign}${formatCryptoAmount(holding.profit_loss)}`, hidden)}
                       </span>
-                      <span className="block text-xs tabular-nums" style={{ color: profitColor }}>
+                      <span className="mt-0.5 block text-xs tabular-nums" style={{ color: profitColor }}>
                         {sign}
                         {holding.profit_loss_percent.toFixed(2)}%
                       </span>
@@ -144,7 +153,12 @@ export function CryptoHoldingsTable({
                     <span className="text-text-muted">—</span>
                   )}
                 </td>
-                <td className="py-3 pl-3">
+                <td className="py-3.5 pr-4 align-middle" onClick={(event) => event.stopPropagation()}>
+                  <span className="flex justify-end">
+                    <RiskLevelPicker value={holding.risk_level} onChange={(level) => onRiskChange(holding, level)} />
+                  </span>
+                </td>
+                <td className="py-3.5 pl-4 align-middle">
                   <div className="flex justify-end gap-1">
                     <button
                       type="button"

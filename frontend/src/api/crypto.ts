@@ -11,6 +11,7 @@ import type {
   CryptoSyncResult,
   CryptoTransaction,
   CryptoTransactionInput,
+  RiskLevel,
 } from "@/types";
 
 export function fetchCryptoPortfolios(includeArchived = false) {
@@ -69,6 +70,12 @@ export function deleteCryptoTransaction(transactionId: number) {
 // server-side, no dedicated endpoint.
 export function deleteCryptoHolding(assetId: number) {
   return api.delete<void>(`/assets/${assetId}`);
+}
+
+// Risk level lives on the underlying Asset, not CryptoHolding — reuses the
+// generic Asset PATCH endpoint, same pattern as deleteCryptoHolding above.
+export function updateCryptoHoldingRisk(assetId: number, riskLevel: RiskLevel) {
+  return api.patch<void>(`/assets/${assetId}`, { risk_level: riskLevel });
 }
 
 export function searchCryptoCoins(query: string) {

@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.enums import CryptoTransactionType
+from app.models.enums import CryptoTransactionType, RiskLevel
 
 
 class CryptoTransactionCreate(BaseModel):
@@ -72,6 +72,10 @@ class CryptoHoldingCreate(BaseModel):
     price_per_unit: Decimal = Field(gt=0, max_digits=38, decimal_places=18)
     date: date_ = Field(default_factory=date_.today)
     note: str | None = Field(default=None, max_length=500)
+    # Defaults to HIGH — crypto is this app's textbook HIGH example (see
+    # services/crypto_service.py) — but user-overridable at add time, since
+    # not every coin carries the same risk (a large-cap vs. a memecoin).
+    risk_level: RiskLevel = RiskLevel.HIGH
 
 
 class CryptoHoldingRead(BaseModel):
@@ -81,6 +85,11 @@ class CryptoHoldingRead(BaseModel):
     symbol: str
     name: str
     thumb_url: str | None
+    # Lives on the underlying Asset (see services/crypto_service.py's
+    # _to_read) — editable via the existing PATCH /assets/{asset_id},
+    # same endpoint every other Asset already uses, no crypto-specific
+    # update route needed.
+    risk_level: RiskLevel
 
     # Quantity and avg_buy_price are derived from the transaction log (see
     # services/crypto_service.py's _compute_position) — never stored.
