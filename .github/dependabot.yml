@@ -1,0 +1,21 @@
+version: 2
+updates:
+  # Frontend npm dependencies.
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+
+  # Backend pip dependencies.
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+
+  # The GitHub Actions themselves (actions/checkout, setup-python, ...) used
+  # in .github/workflows/ci.yml — these go stale too, and an outdated action
+  # can be its own supply-chain risk.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
