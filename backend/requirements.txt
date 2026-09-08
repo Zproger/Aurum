@@ -5,5 +5,5 @@ asyncpg==0.30.0
 alembic==1.14.0
 pydantic==2.10.4
 pydantic-settings==2.7.0
-python-dotenv==1.2.2
+python-dotenv==1.2.3
 httpx==0.28.1
