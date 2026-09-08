@@ -1,9 +1,9 @@
 fastapi==0.141.1
-uvicorn[standard]==0.34.0
-sqlalchemy==2.0.36
-asyncpg==0.30.0
-alembic==1.14.0
-pydantic==2.10.4
-pydantic-settings==2.7.0
+uvicorn[standard]==0.52.4
+sqlalchemy==2.0.52
+asyncpg==0.31.0
+alembic==1.19.2
+pydantic==2.13.5
+pydantic-settings==2.15.0
 python-dotenv==1.2.3
 httpx==0.28.1
