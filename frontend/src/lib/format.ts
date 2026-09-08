@@ -5,16 +5,32 @@ export function getIntlLocale(language: Language = getLanguage()): string {
   return language === "ru" ? "ru-RU" : "en-US";
 }
 
+/** Builds the currency formatter every money helper here shares, so amounts
+ * are labelled identically everywhere in the app.
+ *
+ * `currencyDisplay: "narrowSymbol"` avoids Intl's default "symbol" mode,
+ * which prefixes symbols it considers ambiguous with a region marker — CNY
+ * renders as "CN¥", HKD as "HK$" (both are in lib/currency.ts's supported
+ * list) — reading like a typo next to the amount. narrowSymbol drops that
+ * prefix (plain "¥", "$") while leaving every unambiguous currency (USD,
+ * EUR, RUB, ...) exactly as compact as plain "symbol" already renders them
+ * — unlike currencyDisplay: "code", which would fix CNY/HKD but turn every
+ * other currency's "$1,234"/"1 234 ₽" into "USD 1,234"/"1 234 RUB". */
+function createCurrencyFormatter(currency: string, maximumFractionDigits: number): Intl.NumberFormat {
+  return new Intl.NumberFormat(getIntlLocale(), {
+    style: "currency",
+    currency,
+    currencyDisplay: "narrowSymbol",
+    maximumFractionDigits,
+  });
+}
+
 // `currency` defaults to the app's primary currency setting (Settings page)
 // — call sites only need to pass it explicitly when formatting a value known
 // to be in a *different* currency than that setting.
 export function formatCurrency(amount: number | string, currency: string = getCurrency()): string {
   const value = typeof amount === "string" ? Number(amount) : amount;
-  return new Intl.NumberFormat(getIntlLocale(), {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 0,
-  }).format(value);
+  return createCurrencyFormatter(currency, 0).format(value);
 }
 
 /** Same currency formatting as formatCurrency, but scales decimal precision
@@ -37,7 +53,7 @@ export function formatCryptoAmount(amount: number | string, currency: string = g
         // that — e.g. 0.000000006894 has 8 leading zeros, so this shows
         // 12 decimal places, landing exactly on "6894" and nothing more.
         Math.min(20, Math.max(0, -Math.floor(Math.log10(abs)) - 1) + 4);
-  return new Intl.NumberFormat(getIntlLocale(), { style: "currency", currency, maximumFractionDigits }).format(value);
+  return createCurrencyFormatter(currency, maximumFractionDigits).format(value);
 }
 
 export function formatSignedCurrency(amount: number | string, currency: string = getCurrency()): string {
