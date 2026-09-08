@@ -43,7 +43,12 @@ export default function App() {
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar onOpenMobileNav={() => setMobileNavOpen(true)} />
-        <main className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+        {/* No max-width cap — the sidebar can be collapsed to free up space
+            (see Sidebar.tsx's collapsed w-[72px] vs expanded w-56), and a
+            fixed max-w here would leave that freed space as dead centered
+            gutter instead of handing it to the page. Padding alone keeps
+            content off the sidebar/viewport edges. */}
+        <main className="w-full px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/net-worth" element={<NetWorthPage />} />
