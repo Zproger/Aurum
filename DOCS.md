@@ -855,6 +855,36 @@ curl -u user:pass -X POST http://localhost:3000/api/transactions/bulk \
   }'
 ```
 
+### Log expenses from a chat bot (Telegram, n8n, ...)
+
+Because it's a plain HTTP API, adding a transaction doesn't have to go through the UI — a message to a
+bot works just as well. The usual shape: a Telegram bot (or an n8n workflow triggered by Telegram)
+hands the message text to an LLM, asks it to extract a `TransactionCreate` object from it, then POSTs
+that straight to `/transactions`.
+
+For example, texting the bot "Add a $12 expense for coffee to my Cash account" or "I spent 30 EUR at a
+shop abroad, convert that to dollars and log it under Cash" — the LLM resolves account/category names
+to IDs (via `GET /accounts` / `GET /categories`), and, since Aurum itself never converts currency (see
+[Conventions](#conventions)), converts EUR → USD itself before calling the API:
+
+```bash
+curl -u user:pass -X POST http://localhost:3000/api/transactions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "account_id": 3,
+    "category_id": 4,
+    "type": "expense",
+    "amount": 32.40,
+    "description": "Shopping",
+    "date": "2026-08-30"
+  }'
+```
+
+In n8n this is typically three nodes: a Telegram Trigger, an LLM node (system prompt describes the
+`TransactionCreate` shape plus your own account/category IDs, and is told to output JSON only), and an
+HTTP Request node that POSTs that JSON to `/transactions`. No extra backend needed — the API is the only
+integration point.
+
 ---
 
 For self-hosting, environment variables, and running Aurum itself, see [README.md](README.md).
