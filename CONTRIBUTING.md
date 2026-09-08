@@ -39,6 +39,8 @@ uvicorn app.main:app --reload
 - **Mobile:** check your change at a narrow viewport — Aurum is designed mobile-first.
 - Keep PRs focused. A bug fix doesn't need an accompanying refactor.
 
+Opening a PR pre-fills this checklist for you — see the [PR template](.github/PULL_REQUEST_TEMPLATE.md).
+
 ## Reporting bugs
 
 Open an [Issue](../../issues) with steps to reproduce. For security issues, please use GitHub's private Security tab instead of a public issue.
