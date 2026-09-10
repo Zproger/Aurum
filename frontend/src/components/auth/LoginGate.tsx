@@ -1,13 +1,13 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { Logo } from "@/components/layout/Logo";
 import { LoginScreen } from "@/components/auth/LoginScreen";
-import { NoAuthBanner } from "@/components/auth/NoAuthBanner";
+import { NoAuthModal } from "@/components/auth/NoAuthModal";
 import { checkCredentials, useAuthHeader } from "@/lib/auth";
 
 // "not-configured" and "authenticated" both render `children` the same way,
 // but they must stay distinct: only "not-configured" means this instance has
 // no AURUM_BASIC_AUTH_USER/PASSWORD at all (nginx never sent 401 to our
-// deliberately-wrong probe header), which is what triggers NoAuthBanner.
+// deliberately-wrong probe header), which is what triggers NoAuthModal.
 // Collapsing them back into one "not-required" state would make an
 // authenticated session with valid stored credentials show the "this
 // instance has no password" warning too.
@@ -56,7 +56,7 @@ export function LoginGate({ children }: { children: ReactNode }) {
 
   return (
     <>
-      {probe === "not-configured" && <NoAuthBanner />}
+      {probe === "not-configured" && <NoAuthModal />}
       {children}
     </>
   );

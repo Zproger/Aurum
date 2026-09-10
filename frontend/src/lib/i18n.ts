@@ -54,8 +54,9 @@ const ru = {
   "auth.submitting": "Вход…",
   "auth.errorInvalidCredentials": "Неверный логин или пароль",
   "auth.errorUnreachable": "Не удалось подключиться к серверу. Проверьте соединение и попробуйте снова.",
-  "auth.noAuthBanner": "Этот экземпляр Aurum не защищён паролем — все данные доступны любому, кто до него достучится. Задайте AURUM_BASIC_AUTH_USER и AURUM_BASIC_AUTH_PASSWORD в .env, чтобы включить вход.",
-  "auth.noAuthBannerDismiss": "Понятно",
+  "auth.noAuthModalTitle": "Авторизация не настроена",
+  "auth.noAuthModalBody": "Этот экземпляр Aurum не защищён паролем — все данные доступны любому, кто до него достучится. Задайте AURUM_BASIC_AUTH_USER и AURUM_BASIC_AUTH_PASSWORD в .env, чтобы включить вход.",
+  "auth.noAuthModalAccept": "Я понимаю риски и хочу продолжить",
 
   "dashboard.errorLoading": "Не удалось загрузить данные дашборда. Проверьте, что backend запущен.",
   "dashboard.statRealIncomeLabel": "Реальный доход",
@@ -560,8 +561,9 @@ const en: Record<keyof typeof ru, string> = {
   "auth.submitting": "Signing in…",
   "auth.errorInvalidCredentials": "Incorrect username or password",
   "auth.errorUnreachable": "Couldn't reach the server. Check your connection and try again.",
-  "auth.noAuthBanner": "This Aurum instance has no password protection — all data is accessible to anyone who can reach it. Set AURUM_BASIC_AUTH_USER and AURUM_BASIC_AUTH_PASSWORD in .env to enable login.",
-  "auth.noAuthBannerDismiss": "Got it",
+  "auth.noAuthModalTitle": "Authentication not configured",
+  "auth.noAuthModalBody": "This Aurum instance has no password protection — all data is accessible to anyone who can reach it. Set AURUM_BASIC_AUTH_USER and AURUM_BASIC_AUTH_PASSWORD in .env to enable login.",
+  "auth.noAuthModalAccept": "I understand the risk and want to continue",
 
   "dashboard.errorLoading": "Failed to load dashboard data. Check that the backend is running.",
   "dashboard.statRealIncomeLabel": "Real income",
