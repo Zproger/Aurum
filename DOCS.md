@@ -116,9 +116,13 @@ string.
 
 ### `GET /api/health`
 
-No auth required. Returns `{"status": "ok", "version": "1.1.0"}` — `version` is the running app's
-version, the same value shown in the UI under Settings. Use this to check the backend is up before
-hitting anything else.
+No auth required. Returns `{"status": "ok"}`. Use this to check the backend is up before hitting
+anything else.
+
+This response deliberately carries nothing else. It used to include the running app version, but
+this is the one endpoint served without authentication — handing the exact release to anyone who
+can reach the instance tells them which known issues it still has. The version now comes back as
+`app_version` from `GET /settings`, which sits behind auth like everything else.
 
 ## Accounts
 
@@ -763,10 +767,13 @@ Single row, created automatically on first run — there's nothing to create, on
   "net_worth_decline_threshold_months": 2,
   "risky_allocation_threshold_percent": 20,
   "idle_cash_threshold_amount": "1000.00",
-  "idle_cash_threshold_days": 60
+  "idle_cash_threshold_days": 60,
+  "app_version": "1.1.7"
 }
 ```
 
+- `app_version`: read-only, ignored on `PATCH` — the running app's release, shown in the UI under
+  Settings. It lives here rather than on the unauthenticated `/health`.
 - `currency`: 3-letter uppercase code — display-only, no conversion.
 - `negative_cash_flow_threshold_months` / `net_worth_decline_threshold_months`: consecutive months
   before the corresponding alert fires (`1`–`24`).

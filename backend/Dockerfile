@@ -14,6 +14,19 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY . .
 
+# Drop root. The app never writes to disk (PYTHONDONTWRITEBYTECODE above, no
+# uploads, no local cache), so it only needs read access to /app — which is
+# why the source stays root-owned and is merely readable here. Anything that
+# manages to execute code in this container now lands as an unprivileged user
+# instead of root, which is the difference between a bad day and a container
+# escape.
+#
+# Note for running the test suite (see tests/README.md): installing
+# requirements-dev.txt inside the container now needs `--user`, or run the
+# exec with `-u root`.
+RUN useradd --create-home --uid 10001 aurum
+USER aurum
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=5 \

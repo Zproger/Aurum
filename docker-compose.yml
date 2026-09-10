@@ -4,7 +4,14 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${AURUM_POSTGRES_USER:-aurum}
-      POSTGRES_PASSWORD: ${AURUM_POSTGRES_PASSWORD:-aurum}
+      # "change-me" so this matches .env.example exactly: with no .env at all
+      # the fallback here used to be "aurum" while the template said
+      # "change-me", i.e. "the default password" meant two different things
+      # depending on whether the file existed. Postgres isn't published to the
+      # host (no ports: below), so reaching it means already being on the
+      # container network — but see .env.example for the trap that makes this
+      # worth getting right the first time.
+      POSTGRES_PASSWORD: ${AURUM_POSTGRES_PASSWORD:-change-me}
       POSTGRES_DB: ${AURUM_POSTGRES_DB:-aurum}
     volumes:
       - aurum_pgdata:/var/lib/postgresql/data
@@ -17,9 +24,17 @@ services:
   backend:
     build: ./backend
     restart: unless-stopped
+    # Nothing here ever needs to gain privileges (no setuid binaries, no sudo),
+    # so forbid it outright — this is what stops a compromised process from
+    # escalating back to root inside the container.
+    security_opt:
+      - no-new-privileges:true
     environment:
       AURUM_POSTGRES_USER: ${AURUM_POSTGRES_USER:-aurum}
-      AURUM_POSTGRES_PASSWORD: ${AURUM_POSTGRES_PASSWORD:-aurum}
+      # Must stay identical to the db service's fallback above — if the two
+      # drift, an install without .env brings up a database with one password
+      # and a backend dialling it with another.
+      AURUM_POSTGRES_PASSWORD: ${AURUM_POSTGRES_PASSWORD:-change-me}
       AURUM_POSTGRES_DB: ${AURUM_POSTGRES_DB:-aurum}
       AURUM_POSTGRES_HOST: db
       AURUM_POSTGRES_PORT: 5432
@@ -28,6 +43,7 @@ services:
       # Free CoinGecko Demo key (coingecko.com/en/api/pricing) — the Crypto
       # tab's price sync 400s with a clear message until this is set.
       AURUM_COINGECKO_API_KEY: ${AURUM_COINGECKO_API_KEY:-}
+      AURUM_ENABLE_DOCS: ${AURUM_ENABLE_DOCS:-true}
     depends_on:
       db:
         condition: service_healthy
@@ -35,8 +51,19 @@ services:
   web:
     build: ./frontend
     restart: unless-stopped
+    # nginx's master still needs root to bind :80 and to write the htpasswd
+    # file at boot (docker-entrypoint.d/20-basic-auth.sh), so this one can't
+    # drop to a non-root user without reworking both — but it can still be
+    # barred from escalating any further.
+    security_opt:
+      - no-new-privileges:true
     ports:
-      - "${AURUM_WEB_PORT:-3000}:80"
+      # Bound to loopback by default: published as "3000:80" the app answers
+      # on every interface, so anyone on the same Wi-Fi reaches it — and by
+      # default there is no password on it at all (see 20-basic-auth.sh).
+      # Set AURUM_BIND_ADDRESS=0.0.0.0 to reach it from other devices, but
+      # set AURUM_BASIC_AUTH_USER/PASSWORD before you do.
+      - "${AURUM_BIND_ADDRESS:-127.0.0.1}:${AURUM_WEB_PORT:-3000}:80"
     environment:
       # Both unset = no login screen at all. See frontend/docker-entrypoint.d/20-basic-auth.sh.
       AURUM_BASIC_AUTH_USER: ${AURUM_BASIC_AUTH_USER:-}

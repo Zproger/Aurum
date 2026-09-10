@@ -9,6 +9,9 @@ from app.services.settings_service import get_or_create_app_settings
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
+# Both routes still return the ORM row as-is: AppSettingsRead.app_version
+# isn't a stored column, it defaults to APP_VERSION when FastAPI validates
+# the response (see schemas/settings.py).
 @router.get("", response_model=AppSettingsRead)
 async def read_settings(session: AsyncSession = Depends(get_session)) -> AppSettings:
     return await get_or_create_app_settings(session)

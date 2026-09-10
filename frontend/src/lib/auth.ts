@@ -20,7 +20,11 @@ import { useSyncExternalStore } from "react";
  */
 const SESSION_KEY = "aurum:basicAuth";
 const REMEMBER_KEY = "aurum:basicAuth:remember";
-const REMEMBER_DAYS = 30;
+// 7, not 30: what's stored is the Basic Auth header, i.e. the instance
+// password recoverable in plaintext by anyone who can read localStorage (an
+// XSS, a browser extension, someone with the machine). It can't be revoked
+// server-side, so the only lever on that exposure is how long it sits there.
+const REMEMBER_DAYS = 7;
 const REMEMBER_MS = REMEMBER_DAYS * 24 * 60 * 60 * 1000;
 
 interface RememberedEntry {

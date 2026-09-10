@@ -8,6 +8,12 @@ on:
   push:
     branches: [main]
 
+# Least privilege for GITHUB_TOKEN: these jobs only ever read the checkout.
+# Without this the token inherits the repository default, which can include
+# write access — handed to every third-party action in the run.
+permissions:
+  contents: read
+
 jobs:
   backend-tests:
     runs-on: ubuntu-latest

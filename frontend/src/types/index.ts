@@ -565,10 +565,8 @@ export interface AppSettings {
   risky_allocation_threshold_percent: number;
   idle_cash_threshold_amount: string;
   idle_cash_threshold_days: number;
-}
-
-export interface HealthStatus {
-  status: string;
-  version: string;
+  /** Read-only: the running backend release. Comes back here rather than
+   * from /api/health, which is served without auth. */
+  app_version: string;
 }
 

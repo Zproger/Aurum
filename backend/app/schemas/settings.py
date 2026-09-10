@@ -1,15 +1,25 @@
 from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.core.config import APP_VERSION
 
 
 class AppSettingsRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     currency: str
     negative_cash_flow_threshold_months: int
     net_worth_decline_threshold_months: int
     risky_allocation_threshold_percent: int
     idle_cash_threshold_amount: Decimal
     idle_cash_threshold_days: int
+    # Not a stored column: the default fills itself in when FastAPI validates
+    # the ORM row against this model, so neither route has to assemble it.
+    # It lives on this (authenticated) response rather than on /api/health,
+    # which is deliberately unauthenticated and so would hand the running
+    # version to anyone who can reach the instance.
+    app_version: str = APP_VERSION
 
 
 class AppSettingsUpdate(BaseModel):

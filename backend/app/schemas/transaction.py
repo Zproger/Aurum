@@ -86,7 +86,7 @@ class TransactionFields(BaseModel):
     amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
     description: str = Field(min_length=1, max_length=255)
     merchant: str | None = Field(default=None, max_length=150)
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=2000)
     date: date_
 
     # Auto-capitalizes "траты на продукты" -> "Траты на продукты" so mixed
@@ -152,7 +152,7 @@ class TransactionUpdate(BaseModel):
     amount: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=2)
     description: str | None = Field(default=None, min_length=1, max_length=255)
     merchant: str | None = Field(default=None, max_length=150)
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=2000)
     date: date_ | None = None
     # Omitted -> tags untouched; sent (even as []) -> replaces the full tag set.
     tag_ids: list[int] | None = None

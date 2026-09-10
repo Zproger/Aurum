@@ -14,12 +14,22 @@ lifetime, then run pytest inside the running `backend` container — it's the
 only place with network access to Postgres:
 
 ```bash
-docker compose exec backend pip install -r requirements-dev.txt
-docker compose exec backend pytest -v
+docker compose exec backend pip install --user -r requirements-dev.txt
+docker compose exec backend python -m pytest -v
 ```
 
-Re-run just `pytest -v` for subsequent runs; the `pip install` only needs
-repeating after a container restart/rebuild.
+Re-run just the `python -m pytest -v` line for subsequent runs; the
+`pip install` only needs repeating after a container restart/rebuild.
+
+Two details that both come from the container running as an unprivileged user
+(`aurum`, uid 10001 — see backend/Dockerfile) rather than root:
+
+- `--user` on the install: site-packages belongs to root and isn't writable.
+  The packages land in `/home/aurum/.local`, which isn't on `PATH`, hence
+  `python -m pytest` instead of a bare `pytest`.
+- pytest prints a `PytestCacheWarning` about not being able to write
+  `/app/.pytest_cache`. Expected — the source tree is read-only to the app
+  user by design. Tests still pass; add `-p no:cacheprovider` to silence it.
 
 ## Adding a test
 

@@ -485,8 +485,11 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
 
         <div>
           <Label htmlFor="notes">{t("transactions.form.notesLabel")}</Label>
+          {/* Matches the server's max_length on notes — without it an overlong
+              note only fails on save, as an untranslated 422. */}
           <Input
             id="notes"
+            maxLength={2000}
             value={form.notes}
             onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
           />

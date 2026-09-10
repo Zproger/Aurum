@@ -9,6 +9,7 @@ run first, before any row is touched), and any failure during the swap rolls
 the database back to exactly where it was, so a bad file never leaves the
 app half-restored.
 """
+import logging
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
@@ -45,6 +46,8 @@ from app.schemas.backup import (
     TransactionBackup,
     TransactionSplitBackup,
 )
+
+logger = logging.getLogger(__name__)
 
 BACKUP_FORMAT_VERSION = 1
 
@@ -304,4 +307,9 @@ async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
         raise
     except Exception as exc:
         await session.rollback()
-        raise HTTPException(400, f"Restore failed, no changes were made: {exc}") from exc
+        # The exception text is SQLAlchemy's, naming tables, columns and
+        # constraints — a free map of the schema for anyone probing the API.
+        # It goes to the container log, where the operator can actually read
+        # it; the client gets told only that nothing changed.
+        logger.exception("Backup restore failed")
+        raise HTTPException(400, "Restore failed, no changes were made") from exc

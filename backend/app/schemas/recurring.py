@@ -15,7 +15,7 @@ class RecurringTransactionCreate(BaseModel):
     amount: Decimal = Field(gt=0)
     description: str = Field(min_length=1, max_length=255)
     merchant: str | None = None
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=2000)
     frequency: RecurringFrequency
     anchor_date: date_
 
@@ -35,7 +35,7 @@ class RecurringTransactionUpdate(BaseModel):
     amount: Decimal | None = Field(default=None, gt=0)
     description: str | None = Field(default=None, min_length=1, max_length=255)
     merchant: str | None = None
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=2000)
     frequency: RecurringFrequency | None = None
     anchor_date: date_ | None = None
     is_active: bool | None = None

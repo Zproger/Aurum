@@ -208,6 +208,7 @@ export function AssetFormModal({ open, onClose, asset }: AssetFormModalProps) {
           <Label htmlFor="asset-notes">{t("netWorth.form.notesLabel")}</Label>
           <Input
             id="asset-notes"
+            maxLength={2000}
             value={form.notes}
             onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
           />

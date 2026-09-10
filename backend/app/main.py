@@ -46,9 +46,12 @@ app = FastAPI(
     # backend (see frontend/nginx.conf) — everything else falls through to
     # the SPA's index.html, which is why the defaults (/docs, /openapi.json)
     # would silently 404 through the reverse proxy.
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json",
+    # All three go away together when AURUM_ENABLE_DOCS=false — leaving
+    # openapi.json reachable would keep handing out the full API map even
+    # with the Swagger UI itself switched off.
+    docs_url="/api/docs" if settings.enable_docs else None,
+    redoc_url="/api/redoc" if settings.enable_docs else None,
+    openapi_url="/api/openapi.json" if settings.enable_docs else None,
 )
 
 # CORS stays off unless someone deliberately opens it, and credentials are
@@ -88,7 +91,10 @@ app.include_router(crypto.router, prefix="/api")
 
 @app.get("/api/health")
 async def health() -> dict[str, str]:
-    # version rides along so the frontend's Settings page can show which
-    # release is actually running without a separate authenticated endpoint —
-    # this route is already auth_basic-exempt for Docker's HEALTHCHECK.
-    return {"status": "ok", "version": APP_VERSION}
+    # Status only. This is the one route nginx serves without auth (Docker's
+    # HEALTHCHECK and uptime monitors need it — see frontend/nginx.conf), so
+    # anything returned here is world-readable. The running version used to
+    # ride along, which told an unauthenticated caller exactly which release
+    # they were looking at, and therefore which known issues it still has;
+    # it now comes back from GET /api/settings, which is behind auth.
+    return {"status": "ok"}

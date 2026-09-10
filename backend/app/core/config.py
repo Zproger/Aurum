@@ -4,10 +4,11 @@ from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Single source of truth for the running app's version — surfaced in the API
-# title, /api/health (which the frontend reads to show it in Settings), and
-# embedded in exported backups so an old file can be told apart from a
-# current one.
-APP_VERSION = "1.1.6"
+# title, in GET /api/settings as app_version (which the frontend reads to show
+# it in Settings; it deliberately does NOT ride on the unauthenticated
+# /api/health), and embedded in exported backups so an old file can be told
+# apart from a current one.
+APP_VERSION = "1.1.7"
 
 
 class Settings(BaseSettings):
@@ -34,6 +35,14 @@ class Settings(BaseSettings):
     # Crypto tab's endpoints 400 with a clear message until this is set,
     # rather than silently hitting CoinGecko's much stingier keyless tier.
     coingecko_api_key: str = ""
+
+    # Swagger/ReDoc/openapi.json at /api/docs. On by default because the API
+    # is a documented feature of this app (see DOCS.md), and because when
+    # basic auth is configured these sit behind it like everything else under
+    # /api/. Turn it off on an instance that's reachable from the internet
+    # *without* basic auth: an open /api/openapi.json is a complete,
+    # machine-readable map of every endpoint and payload shape.
+    enable_docs: bool = True
 
     @property
     def database_url(self) -> str:
