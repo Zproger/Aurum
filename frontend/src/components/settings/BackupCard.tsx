@@ -80,12 +80,16 @@ export function BackupCard() {
             <Upload size={16} />
             {isImporting ? t("backup.importing") : t("backup.importButton")}
           </Button>
+          {/* Visually hidden via opacity/size, not `display:none` — Firefox on
+              Linux can silently fail to open the native file dialog when
+              .click() targets a file input removed from layout entirely. */}
           <input
             ref={fileInputRef}
             type="file"
             accept="application/json,.json"
             onChange={handleFileSelected}
-            className="hidden"
+            className="absolute h-px w-px overflow-hidden opacity-0"
+            tabIndex={-1}
           />
         </div>
 
