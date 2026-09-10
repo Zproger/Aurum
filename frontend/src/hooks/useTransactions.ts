@@ -3,6 +3,7 @@ import {
   bulkCreateTransactions,
   createTransaction,
   deleteTransaction,
+  fetchAllTransactionsInRange,
   fetchTransactions,
   fetchTransactionYears,
   updateTransaction,
@@ -30,6 +31,21 @@ export function useTransactions(filters: TransactionFilters) {
   return useQuery({
     queryKey: ["transactions", filters],
     queryFn: () => fetchTransactions(filters),
+  });
+}
+
+/** CSV import's duplicate check (see pages/CsvImportPage.tsx) — every
+ * existing transaction for one account within the imported date range, so
+ * re-importing an overlapping bank export can be told apart from new rows. */
+export function useTransactionsForDuplicateCheck(
+  accountId: number | null,
+  startDate: string | null,
+  endDate: string | null
+) {
+  return useQuery({
+    queryKey: ["transactions-duplicate-check", accountId, startDate, endDate],
+    queryFn: () => fetchAllTransactionsInRange({ account_id: accountId!, start_date: startDate!, end_date: endDate! }),
+    enabled: accountId !== null && startDate !== null && endDate !== null,
   });
 }
 

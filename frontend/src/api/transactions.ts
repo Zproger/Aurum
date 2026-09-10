@@ -26,6 +26,25 @@ export function fetchTransactions(filters: TransactionFilters = {}) {
   return api.get<TransactionPage>(`/transactions?${params.toString()}`);
 }
 
+// Used by CSV import's duplicate check (see pages/CsvImportPage.tsx) — needs
+// every transaction in the imported date range for one account, not just a
+// page of them, to know what's already there. Capped at 25 pages (5000 rows
+// at the API's max page_size) so a huge date range can't turn one import
+// into an unbounded fetch loop; beyond that, duplicate detection just
+// silently covers less of the range instead of hanging.
+const MAX_DUPLICATE_CHECK_PAGES = 25;
+
+export async function fetchAllTransactionsInRange(filters: TransactionFilters): Promise<Transaction[]> {
+  const pageSize = 200;
+  const items: Transaction[] = [];
+  for (let page = 1; page <= MAX_DUPLICATE_CHECK_PAGES; page++) {
+    const result = await fetchTransactions({ ...filters, page, page_size: pageSize });
+    items.push(...result.items);
+    if (items.length >= result.total || result.items.length < pageSize) break;
+  }
+  return items;
+}
+
 /** Full range of years to offer in the year picker, from the earliest
  * transaction through the current year (see backend for the "gap year"
  * rationale). */

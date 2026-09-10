@@ -6,9 +6,18 @@ import { Button } from "@/components/ui/Button";
 import { Label, Select } from "@/components/ui/Input";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useCategories } from "@/hooks/useCategories";
-import { useBulkCreateTransactions } from "@/hooks/useTransactions";
+import { useBulkCreateTransactions, useTransactionsForDuplicateCheck } from "@/hooks/useTransactions";
 import { translateCategoryName } from "@/lib/categoryLabels";
-import { DATE_FORMATS, parseAmount, parseCsv, parseDateWithFormat, type DateFormat } from "@/lib/csv";
+import {
+  AMOUNT_FORMATS,
+  DATE_FORMATS,
+  parseAmount,
+  parseCsv,
+  parseDateWithFormat,
+  transactionDedupeKey,
+  type AmountFormat,
+  type DateFormat,
+} from "@/lib/csv";
 import { formatCurrency } from "@/lib/format";
 import { ApiError } from "@/api/client";
 import { useTranslation } from "@/lib/i18n";
@@ -17,6 +26,14 @@ import type { TransactionInput } from "@/types";
 type Step = "upload" | "map" | "preview";
 
 const NONE = "";
+
+// WHATWG encoding labels TextDecoder understands. UTF-8 covers most modern
+// exports; the rest are here because bank CSVs — especially older or
+// Russian-bank ones — are routinely still in a legacy Windows codepage, and
+// decoding those as UTF-8 silently turns every non-ASCII character into
+// mojibake instead of failing loudly.
+const ENCODINGS = ["utf-8", "windows-1251", "windows-1252", "koi8-r"] as const;
+type Encoding = (typeof ENCODINGS)[number];
 
 interface Mapping {
   date: string;
@@ -43,13 +60,27 @@ export function CsvImportPage() {
   const [accountId, setAccountId] = useState("");
   const [step, setStep] = useState<Step>("upload");
   const [fileName, setFileName] = useState("");
-  const [headers, setHeaders] = useState<string[]>([]);
-  const [dataRows, setDataRows] = useState<string[][]>([]);
+  const [fileBuffer, setFileBuffer] = useState<ArrayBuffer | null>(null);
+  const [encoding, setEncoding] = useState<Encoding>("utf-8");
   const [mapping, setMapping] = useState<Mapping>({ date: "", amount: "", description: "", merchant: "", notes: "", category: "" });
   const [dateFormat, setDateFormat] = useState<DateFormat>("YYYY-MM-DD");
+  const [amountFormat, setAmountFormat] = useState<AmountFormat>("auto");
+  const [includeDuplicates, setIncludeDuplicates] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [createdCount, setCreatedCount] = useState<number | null>(null);
+
+  // Re-decoded whenever `encoding` changes, so picking a different encoding
+  // on the map screen (because the auto-detected guess came out wrong)
+  // re-parses the same upload without asking the user to re-select the file.
+  const { headers, dataRows } = useMemo(() => {
+    if (!fileBuffer) return { headers: [] as string[], dataRows: [] as string[][] };
+    const text = new TextDecoder(encoding).decode(fileBuffer);
+    const rows = parseCsv(text);
+    if (rows.length < 2) return { headers: [] as string[], dataRows: [] as string[][] };
+    const [headerRow, ...rest] = rows;
+    return { headers: headerRow, dataRows: rest };
+  }, [fileBuffer, encoding]);
 
   const categoryLookup = useMemo(() => {
     const map: Record<"income" | "expense", Map<string, number>> = { income: new Map(), expense: new Map() };
@@ -64,8 +95,54 @@ export function CsvImportPage() {
     return amount < 0 ? "expense" : "income";
   }
 
-  const { valid, skipped } = useMemo(() => {
-    if (step !== "preview") return { valid: [] as TransactionInput[], skipped: [] as SkippedRow[] };
+  /** First non-empty raw value under `headerName`, shown next to a mapping
+   * dropdown so the user can confirm they picked the right column before
+   * committing to a full preview — a bank's own header names (or a header
+   * row that's just "Column1", "Column2"…) aren't always self-explanatory. */
+  function sampleValue(headerName: string): string {
+    if (!headerName) return "";
+    const idx = headers.indexOf(headerName);
+    if (idx < 0) return "";
+    const row = dataRows.find((cells) => (cells[idx] ?? "").trim() !== "");
+    return (row?.[idx] ?? "").trim();
+  }
+
+  // Bounds the duplicate-check query (see useTransactionsForDuplicateCheck
+  // below) to the date range actually present in the file, instead of every
+  // transaction ever recorded on the account.
+  const dateBounds = useMemo(() => {
+    if (step !== "preview" || !mapping.date) return null;
+    const dateIdx = headers.indexOf(mapping.date);
+    if (dateIdx < 0) return null;
+    let min: string | null = null;
+    let max: string | null = null;
+    for (const cells of dataRows) {
+      const iso = parseDateWithFormat(cells[dateIdx] ?? "", dateFormat);
+      if (!iso) continue;
+      if (min === null || iso < min) min = iso;
+      if (max === null || iso > max) max = iso;
+    }
+    return min && max ? { min, max } : null;
+  }, [step, headers, dataRows, mapping.date, dateFormat]);
+
+  const existingTransactions = useTransactionsForDuplicateCheck(
+    accountId ? Number(accountId) : null,
+    dateBounds?.min ?? null,
+    dateBounds?.max ?? null
+  );
+
+  // Keyed on date+type+amount+description — see lib/csv.ts's
+  // transactionDedupeKey doc comment for why those fields and not an ID.
+  const existingKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const tx of existingTransactions.data ?? []) {
+      keys.add(transactionDedupeKey(tx.date, tx.type, tx.amount, tx.description));
+    }
+    return keys;
+  }, [existingTransactions.data]);
+
+  const { valid, skipped, duplicateCount } = useMemo(() => {
+    if (step !== "preview") return { valid: [] as TransactionInput[], skipped: [] as SkippedRow[], duplicateCount: 0 };
 
     const dateIdx = headers.indexOf(mapping.date);
     const amountIdx = headers.indexOf(mapping.amount);
@@ -74,7 +151,8 @@ export function CsvImportPage() {
     const notesIdx = mapping.notes ? headers.indexOf(mapping.notes) : -1;
     const categoryIdx = mapping.category ? headers.indexOf(mapping.category) : -1;
 
-    const validRows: TransactionInput[] = [];
+    const freshRows: TransactionInput[] = [];
+    const duplicateRows: TransactionInput[] = [];
     const skippedRows: SkippedRow[] = [];
 
     dataRows.forEach((cells, index) => {
@@ -91,7 +169,7 @@ export function CsvImportPage() {
         skippedRows.push({ row: rowNumber, reason: t("transactions.import.errorBadDate", { value: rawDate || "—" }) });
         return;
       }
-      const amount = parseAmount(rawAmount);
+      const amount = parseAmount(rawAmount, amountFormat);
       if (amount === null || amount === 0) {
         skippedRows.push({ row: rowNumber, reason: t("transactions.import.errorBadAmount", { value: rawAmount || "—" }) });
         return;
@@ -105,7 +183,7 @@ export function CsvImportPage() {
       const type = resolveType(amount);
       const categoryId = rawCategory ? categoryLookup[type].get(rawCategory.toLowerCase()) ?? null : null;
 
-      validRows.push({
+      const candidate: TransactionInput = {
         account_id: Number(accountId),
         category_id: categoryId,
         transfer_account_id: null,
@@ -115,53 +193,73 @@ export function CsvImportPage() {
         merchant: rawMerchant || null,
         notes: rawNotes || null,
         date: isoDate,
-      });
+      };
+
+      const key = transactionDedupeKey(candidate.date, candidate.type, candidate.amount, candidate.description);
+      if (existingKeys.has(key)) {
+        duplicateRows.push(candidate);
+      } else {
+        freshRows.push(candidate);
+      }
     });
 
-    return { valid: validRows, skipped: skippedRows };
+    return {
+      valid: includeDuplicates ? [...freshRows, ...duplicateRows] : freshRows,
+      skipped: skippedRows,
+      duplicateCount: duplicateRows.length,
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, headers, dataRows, mapping, dateFormat, categoryLookup, accountId, t]);
+  }, [step, headers, dataRows, mapping, dateFormat, amountFormat, categoryLookup, accountId, existingKeys, includeDuplicates, t]);
 
-  function handleFileSelected(event: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileSelected(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
     setParseError(null);
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = String(reader.result ?? "");
-      const rows = parseCsv(text);
-      if (rows.length < 2) {
-        setParseError(t("transactions.import.errorEmptyFile"));
-        return;
-      }
-      const [headerRow, ...rest] = rows;
-      setFileName(file.name);
-      setHeaders(headerRow);
-      setDataRows(rest);
-      // Best-effort auto-mapping by common header names — the user can
-      // still correct any of these on the next screen.
-      const guess = (...candidates: string[]) =>
-        headerRow.find((h) => candidates.includes(h.trim().toLowerCase())) ?? "";
-      setMapping({
-        date: guess("date", "дата"),
-        amount: guess("amount", "сумма"),
-        description: guess("description", "описание", "назначение платежа"),
-        merchant: guess("merchant", "payee", "получатель"),
-        notes: guess("notes", "заметка", "примечание"),
-        category: guess("category", "категория"),
-      });
-      setStep("map");
-    };
-    reader.readAsText(file);
+    const buffer = await file.arrayBuffer();
+    // Invalid-UTF-8 byte sequences almost always mean a Cyrillic bank export
+    // in the classic Windows codepage — a far better first guess than
+    // staying on UTF-8 and showing every letter as mojibake. The user can
+    // still override this from the dropdown on the next screen either way.
+    let detectedEncoding: Encoding = "utf-8";
+    try {
+      new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+    } catch {
+      detectedEncoding = "windows-1251";
+    }
+
+    const rows = parseCsv(new TextDecoder(detectedEncoding).decode(buffer));
+    if (rows.length < 2) {
+      setParseError(t("transactions.import.errorEmptyFile"));
+      return;
+    }
+    const [headerRow] = rows;
+    setFileName(file.name);
+    setFileBuffer(buffer);
+    setEncoding(detectedEncoding);
+    // Best-effort auto-mapping by common header names — the user can still
+    // correct any of these on the next screen.
+    const guess = (...candidates: string[]) =>
+      headerRow.find((h) => candidates.includes(h.trim().toLowerCase())) ?? "";
+    setMapping({
+      date: guess("date", "дата"),
+      amount: guess("amount", "сумма"),
+      description: guess("description", "описание", "назначение платежа"),
+      merchant: guess("merchant", "payee", "получатель"),
+      notes: guess("notes", "заметка", "примечание"),
+      category: guess("category", "категория"),
+    });
+    setAmountFormat("auto");
+    setIncludeDuplicates(false);
+    setStep("map");
   }
 
   function startOver() {
     setStep("upload");
     setFileName("");
-    setHeaders([]);
-    setDataRows([]);
+    setFileBuffer(null);
+    setEncoding("utf-8");
     setCreatedCount(null);
     setImportError(null);
   }
@@ -235,6 +333,18 @@ export function CsvImportPage() {
             <span className="text-xs text-text-muted">{fileName}</span>
           </CardHeader>
           <CardContent className="space-y-3">
+            <div>
+              <Label htmlFor="map-encoding">{t("transactions.import.encodingLabel")}</Label>
+              <Select id="map-encoding" value={encoding} onChange={(event) => setEncoding(event.target.value as Encoding)} className="sm:w-56">
+                {ENCODINGS.map((enc) => (
+                  <option key={enc} value={enc}>
+                    {enc.toUpperCase()}
+                  </option>
+                ))}
+              </Select>
+              <p className="mt-1 text-xs text-text-muted">{t("transactions.import.encodingHint")}</p>
+            </div>
+
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <Label htmlFor="map-date">{t("transactions.import.dateColumnLabel")}</Label>
@@ -248,6 +358,11 @@ export function CsvImportPage() {
                     </option>
                   ))}
                 </Select>
+                {mapping.date && (
+                  <p className="mt-1 text-xs text-text-muted">
+                    {t("transactions.import.sampleValueLabel", { value: sampleValue(mapping.date) || "—" })}
+                  </p>
+                )}
               </div>
               <div>
                 <Label htmlFor="map-date-format">{t("transactions.import.dateFormatLabel")}</Label>
@@ -272,6 +387,21 @@ export function CsvImportPage() {
                   ))}
                 </Select>
                 <p className="mt-1 text-xs text-text-muted">{t("transactions.import.amountHint")}</p>
+                {mapping.amount && (
+                  <p className="text-xs text-text-muted">
+                    {t("transactions.import.sampleValueLabel", { value: sampleValue(mapping.amount) || "—" })}
+                  </p>
+                )}
+              </div>
+              <div>
+                <Label htmlFor="map-amount-format">{t("transactions.import.amountFormatLabel")}</Label>
+                <Select id="map-amount-format" value={amountFormat} onChange={(event) => setAmountFormat(event.target.value as AmountFormat)}>
+                  {AMOUNT_FORMATS.map((format) => (
+                    <option key={format} value={format}>
+                      {t(`transactions.import.amountFormat.${format}`)}
+                    </option>
+                  ))}
+                </Select>
               </div>
               <div>
                 <Label htmlFor="map-description">{t("transactions.import.descriptionColumnLabel")}</Label>
@@ -289,6 +419,11 @@ export function CsvImportPage() {
                     </option>
                   ))}
                 </Select>
+                {mapping.description && (
+                  <p className="mt-1 text-xs text-text-muted">
+                    {t("transactions.import.sampleValueLabel", { value: sampleValue(mapping.description) || "—" })}
+                  </p>
+                )}
               </div>
               <div>
                 <Label htmlFor="map-merchant">{t("transactions.form.merchantLabel")}</Label>
@@ -300,6 +435,11 @@ export function CsvImportPage() {
                     </option>
                   ))}
                 </Select>
+                {mapping.merchant && (
+                  <p className="mt-1 text-xs text-text-muted">
+                    {t("transactions.import.sampleValueLabel", { value: sampleValue(mapping.merchant) || "—" })}
+                  </p>
+                )}
               </div>
               <div>
                 <Label htmlFor="map-notes">{t("transactions.form.notesLabel")}</Label>
@@ -311,6 +451,11 @@ export function CsvImportPage() {
                     </option>
                   ))}
                 </Select>
+                {mapping.notes && (
+                  <p className="mt-1 text-xs text-text-muted">
+                    {t("transactions.import.sampleValueLabel", { value: sampleValue(mapping.notes) || "—" })}
+                  </p>
+                )}
               </div>
               <div>
                 <Label htmlFor="map-category">{t("transactions.form.categoryLabel")}</Label>
@@ -323,6 +468,11 @@ export function CsvImportPage() {
                   ))}
                 </Select>
                 <p className="mt-1 text-xs text-text-muted">{t("transactions.import.categoryHint")}</p>
+                {mapping.category && (
+                  <p className="text-xs text-text-muted">
+                    {t("transactions.import.sampleValueLabel", { value: sampleValue(mapping.category) || "—" })}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -354,6 +504,27 @@ export function CsvImportPage() {
                 <p className="text-sm text-text-secondary">
                   {t("transactions.import.summary", { valid: valid.length, skipped: skipped.length })}
                 </p>
+
+                {existingTransactions.isLoading && (
+                  <p className="text-xs text-text-muted">{t("transactions.import.duplicateCheckLoading")}</p>
+                )}
+
+                {duplicateCount > 0 && (
+                  <div className="flex items-start gap-2 rounded-lg border border-border bg-surface-2 p-3 text-xs text-text-muted">
+                    <label className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={includeDuplicates}
+                        onChange={(event) => setIncludeDuplicates(event.target.checked)}
+                        className="mt-0.5 h-3.5 w-3.5 accent-text-primary"
+                      />
+                      <span>
+                        {t("transactions.import.duplicatesFound", { count: duplicateCount })}{" "}
+                        {t("transactions.import.includeDuplicates")}
+                      </span>
+                    </label>
+                  </div>
+                )}
 
                 {valid.length > 0 && (
                   <div className="overflow-x-auto rounded-lg border border-border">
