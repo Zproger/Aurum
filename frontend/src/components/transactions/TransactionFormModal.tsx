@@ -41,8 +41,19 @@ interface SplitRowState {
   note: string;
 }
 
+// crypto.randomUUID() only exists in secure contexts (HTTPS/localhost) — on plain
+// HTTP (e.g. accessing the app by LAN IP) it's undefined and throws a TypeError.
+// This key is only a local React list key, never sent to the backend, so a
+// Math.random()-based fallback is fine when the Web Crypto API isn't available.
+function generateRowKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `split-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function emptySplitRow(): SplitRowState {
-  return { key: crypto.randomUUID(), category_id: "", amount: "", note: "" };
+  return { key: generateRowKey(), category_id: "", amount: "", note: "" };
 }
 
 // Cents, not floats — a plain Number sum of "0.10" + "0.20" style amounts can
