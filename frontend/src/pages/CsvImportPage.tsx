@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, Upload } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -49,6 +49,29 @@ interface SkippedRow {
   reason: string;
 }
 
+// Best-effort auto-mapping by common header names — whatever it gets wrong,
+// the user corrects on the map screen.
+const HEADER_GUESSES: Record<keyof Mapping, string[]> = {
+  date: ["date", "дата"],
+  amount: ["amount", "сумма"],
+  description: ["description", "описание", "назначение платежа"],
+  merchant: ["merchant", "payee", "получатель"],
+  notes: ["notes", "заметка", "примечание"],
+  category: ["category", "категория"],
+};
+
+function guessMapping(headerRow: string[]): Mapping {
+  const guess = (candidates: string[]) => headerRow.find((h) => candidates.includes(h.trim().toLowerCase())) ?? "";
+  return {
+    date: guess(HEADER_GUESSES.date),
+    amount: guess(HEADER_GUESSES.amount),
+    description: guess(HEADER_GUESSES.description),
+    merchant: guess(HEADER_GUESSES.merchant),
+    notes: guess(HEADER_GUESSES.notes),
+    category: guess(HEADER_GUESSES.category),
+  };
+}
+
 export function CsvImportPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -81,6 +104,25 @@ export function CsvImportPage() {
     const [headerRow, ...rest] = rows;
     return { headers: headerRow, dataRows: rest };
   }, [fileBuffer, encoding]);
+
+  // Owns mapping initialisation, keyed on the header row's *contents*.
+  // Changing the encoding re-decodes that row, and a column picked under the
+  // previous encoding then names a header that no longer exists:
+  // headers.indexOf() returns -1, the dropdown renders blank while
+  // mappingComplete still reports "ready", and every row gets skipped as an
+  // unparseable date. Re-guessing against the new names is the only sane
+  // reading of a mapping whose columns are all gone. When the decoded
+  // headers come out identical (an all-ASCII header row survives every
+  // encoding here), the key doesn't change, this doesn't run, and manual
+  // column picks stay put.
+  // JSON.stringify, not join(): joining on a separator would read
+  // ["ab","c"] and ["a","bc"] as one and the same header row.
+  const headersKey = JSON.stringify(headers);
+  useEffect(() => {
+    if (headers.length === 0) return;
+    setMapping(guessMapping(headers));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [headersKey]);
 
   const categoryLookup = useMemo(() => {
     const map: Record<"income" | "expense", Map<string, number>> = { income: new Map(), expense: new Map() };
@@ -238,18 +280,7 @@ export function CsvImportPage() {
     setFileName(file.name);
     setFileBuffer(buffer);
     setEncoding(detectedEncoding);
-    // Best-effort auto-mapping by common header names — the user can still
-    // correct any of these on the next screen.
-    const guess = (...candidates: string[]) =>
-      headerRow.find((h) => candidates.includes(h.trim().toLowerCase())) ?? "";
-    setMapping({
-      date: guess("date", "дата"),
-      amount: guess("amount", "сумма"),
-      description: guess("description", "описание", "назначение платежа"),
-      merchant: guess("merchant", "payee", "получатель"),
-      notes: guess("notes", "заметка", "примечание"),
-      category: guess("category", "категория"),
-    });
+    setMapping(guessMapping(headerRow));
     setAmountFormat("auto");
     setIncludeDuplicates(false);
     setStep("map");
@@ -505,8 +536,12 @@ export function CsvImportPage() {
                   {t("transactions.import.summary", { valid: valid.length, skipped: skipped.length })}
                 </p>
 
-                {existingTransactions.isLoading && (
+                {existingTransactions.isFetching && (
                   <p className="text-xs text-text-muted">{t("transactions.import.duplicateCheckLoading")}</p>
+                )}
+
+                {existingTransactions.isError && (
+                  <p className="text-sm text-danger">{t("transactions.import.duplicateCheckFailed")}</p>
                 )}
 
                 {duplicateCount > 0 && (
@@ -581,7 +616,13 @@ export function CsvImportPage() {
                   <Button variant="ghost" onClick={() => setStep("map")}>
                     {t("common.back")}
                   </Button>
-                  <Button disabled={valid.length === 0 || bulkCreate.isPending} onClick={() => void handleImport()}>
+                  {/* isFetching, not isLoading: a background refetch of the
+                      duplicate check still serves stale data, and importing
+                      against that would wave duplicates straight through. */}
+                  <Button
+                    disabled={valid.length === 0 || bulkCreate.isPending || existingTransactions.isFetching}
+                    onClick={() => void handleImport()}
+                  >
                     {bulkCreate.isPending
                       ? t("common.saving")
                       : t("transactions.import.importButton", { count: valid.length })}

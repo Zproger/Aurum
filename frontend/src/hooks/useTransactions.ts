@@ -15,6 +15,11 @@ function useInvalidateAfterTransactionChange() {
   const queryClient = useQueryClient();
   return () => {
     queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    // Without this, a second CSV import of the same date range within
+    // staleTime (see main.tsx) would check for duplicates against a cached
+    // list from *before* the first import finished — and find none, which
+    // is exactly the case the duplicate check exists to catch.
+    queryClient.invalidateQueries({ queryKey: ["transactions-duplicate-check"] });
     queryClient.invalidateQueries({ queryKey: ["transaction-years"] });
     queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
     queryClient.invalidateQueries({ queryKey: ["net-worth-summary"] });
