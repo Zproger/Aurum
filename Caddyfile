@@ -1,0 +1,23 @@
+# Used only by the TLS overlay (docker-compose.tls.yml). The hostname comes
+# from AURUM_DOMAIN in .env — Caddy requests a Let's Encrypt certificate for
+# it on first start and renews it on its own from then on.
+#
+# For a local trial without a public domain, set AURUM_DOMAIN=localhost and
+# uncomment "tls internal" below: Caddy then issues its own certificate from
+# a local CA. The browser won't trust it until you install that CA, so this
+# is for checking the plumbing, not for daily use.
+{$AURUM_DOMAIN} {
+	# tls internal
+
+	encode zstd gzip
+
+	# Aurum's own nginx already sets CSP, nosniff, Referrer-Policy and the
+	# rest — they pass through untouched. HSTS is added here instead of
+	# there on purpose: it tells browsers to refuse plain HTTP to this host
+	# for a year, which is only safe to promise once TLS actually terminates
+	# in front of the app. Setting it in nginx.conf would apply it to
+	# plain-HTTP installs too, and lock them out of their own instance.
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	reverse_proxy web:80
+}

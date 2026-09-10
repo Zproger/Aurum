@@ -12,13 +12,16 @@ RUN apk add --no-cache openssl
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY docker-entrypoint.d/20-basic-auth.sh /docker-entrypoint.d/20-basic-auth.sh
+COPY docker-entrypoint.d/25-allowed-hosts.sh /docker-entrypoint.d/25-allowed-hosts.sh
 # sed strips any stray CR: cloned on Windows with core.autocrlf=true the
-# script arrives as CRLF, the kernel reads the shebang as "/bin/sh\r", and
+# scripts arrive as CRLF, the kernel reads the shebang as "/bin/sh\r", and
 # nginx dies on boot with "not found" (exit 127). .gitattributes fixes this
 # at the repository level; this line covers checkouts that predate it.
-RUN sed -i 's/\r$//' /docker-entrypoint.d/20-basic-auth.sh \
-    && chmod +x /docker-entrypoint.d/20-basic-auth.sh \
-    && touch /etc/nginx/basic-auth.conf
+# The empty .conf files matter: nginx.conf includes both unconditionally, and
+# an include of a missing file is a startup error.
+RUN sed -i 's/\r$//' /docker-entrypoint.d/20-basic-auth.sh /docker-entrypoint.d/25-allowed-hosts.sh \
+    && chmod +x /docker-entrypoint.d/20-basic-auth.sh /docker-entrypoint.d/25-allowed-hosts.sh \
+    && touch /etc/nginx/basic-auth.conf /etc/nginx/allowed-hosts.conf
 
 EXPOSE 80
 

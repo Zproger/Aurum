@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_session
+from app.core.audit import log_destructive
 from app.schemas.account import AccountCreate, AccountUpdate, AccountWithBalance
 from app.services.account_service import create_account, delete_account, list_accounts, update_account
 
@@ -31,4 +32,7 @@ async def update_account_route(
 
 @router.delete("/{account_id}", status_code=204)
 async def delete_account_route(account_id: int, session: AsyncSession = Depends(get_session)) -> None:
+    # Takes every transaction on the account with it, so it's worth a line in
+    # the log even though the UI asks for confirmation first.
     await delete_account(session, account_id)
+    log_destructive("account.deleted", account_id=account_id)

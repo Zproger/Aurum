@@ -1,0 +1,50 @@
+# TLS overlay — opt in, not part of the default stack.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d
+#
+# Aurum itself speaks plain HTTP and stays that way: certificate handling is
+# a job for a dedicated terminator, not for the app's own nginx. Caddy is
+# used here because it obtains and renews a Let's Encrypt certificate on its
+# own, with no cron job and no certbot invocation to forget.
+#
+# What this changes:
+#   - Caddy takes ports 80 and 443 on the host. 80 has to stay open: it's
+#     both the ACME HTTP challenge and the redirect to HTTPS.
+#   - The web container stops publishing a port of its own — it's reachable
+#     only from inside the compose network, through Caddy.
+#
+# Required before the first run (see .env):
+#   AURUM_DOMAIN=aurum.example.com   — a real name resolving to this host
+#   AURUM_ALLOWED_HOSTS=aurum.example.com
+#     ^ easy to miss: the app's own Host check (25-allowed-hosts.sh) still
+#       applies behind the proxy, and Caddy forwards the original Host, so
+#       leaving this at the default gets you a 421 through a perfectly good
+#       certificate.
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    environment:
+      AURUM_DOMAIN: ${AURUM_DOMAIN:?set AURUM_DOMAIN in .env to the hostname this instance answers on}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and ACME account keys. Keep this volume — losing it
+      # means re-issuing certificates, and Let's Encrypt rate-limits that.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
+  web:
+    # Reachable only through Caddy now. The "!reset" is what actually removes
+    # the base file's published port instead of adding to it — a plain empty
+    # list would be merged, not substituted, and the port would stay open.
+    ports: !reset []
+
+volumes:
+  caddy_data:
+  caddy_config:

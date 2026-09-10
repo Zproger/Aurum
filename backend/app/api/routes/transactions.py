@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_session
+from app.core.audit import log_destructive
 from app.models.category import Category
 from app.models.enums import CategoryKind, TransactionType
 from app.models.tag import Tag
@@ -228,6 +229,9 @@ async def bulk_create_transactions(
 
     session.add_all(transactions)
     await session.commit()
+    # One request can add thousands of rows (CSV import) — worth a line so an
+    # unexpected pile of transactions can be dated later.
+    log_destructive("transactions.bulk_created", count=len(transactions))
     return TransactionBulkCreateResult(created=len(transactions))
 
 

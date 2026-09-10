@@ -3,7 +3,7 @@ import { Logo } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Input, Label } from "@/components/ui/Input";
-import { buildBasicAuthHeader, checkCredentials, setCredentials } from "@/lib/auth";
+import { buildBasicAuthHeader, checkCredentials, isRememberSupported, setCredentials } from "@/lib/auth";
 import { useTranslation } from "@/lib/i18n";
 
 type Status = "idle" | "submitting" | "invalid" | "unreachable";
@@ -19,13 +19,18 @@ export function LoginScreen() {
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
+  // Remembering encrypts the credential with WebCrypto, which browsers only
+  // expose in a secure context — over plain HTTP to a LAN address there's no
+  // safe way to persist it, so the option is hidden rather than offered and
+  // quietly ignored. See lib/credentialVault.ts.
+  const canRemember = isRememberSupported();
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setStatus("submitting");
     const result = await checkCredentials(buildBasicAuthHeader(username, password));
     if (result === "ok") {
-      setCredentials(username, password, remember);
+      setCredentials(username, password, canRemember && remember);
       return;
     }
     setStatus(result === "unauthorized" ? "invalid" : "unreachable");
@@ -67,15 +72,19 @@ export function LoginScreen() {
               />
             </div>
 
-            <label className="flex items-center gap-2 text-xs text-text-muted">
-              <input
-                type="checkbox"
-                checked={remember}
-                onChange={(event) => setRemember(event.target.checked)}
-                className="h-3.5 w-3.5 accent-text-primary"
-              />
-              {t("auth.rememberMe")}
-            </label>
+            {canRemember ? (
+              <label className="flex items-center gap-2 text-xs text-text-muted">
+                <input
+                  type="checkbox"
+                  checked={remember}
+                  onChange={(event) => setRemember(event.target.checked)}
+                  className="h-3.5 w-3.5 accent-text-primary"
+                />
+                {t("auth.rememberMe")}
+              </label>
+            ) : (
+              <p className="text-xs text-text-muted">{t("auth.sessionOnlyHint")}</p>
+            )}
 
             {status === "invalid" && <p className="text-sm text-danger">{t("auth.errorInvalidCredentials")}</p>}
             {status === "unreachable" && <p className="text-sm text-danger">{t("auth.errorUnreachable")}</p>}

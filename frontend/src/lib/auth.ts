@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 
+import { forgetCredential, isVaultAvailable, recallCredential, rememberCredential } from "@/lib/credentialVault";
+
 /**
  * Client-side mirror of the HTTP Basic Auth credentials Aurum's own login
  * screen collects (see components/auth/LoginScreen.tsx), so every fetch can
@@ -9,45 +11,31 @@ import { useSyncExternalStore } from "react";
  * this only avoids ever triggering that native prompt, by never letting an
  * unauthenticated request happen without us attaching the header ourselves.
  *
- * Two storage tiers, chosen at login time by the "remember me" checkbox:
- *  - sessionStorage (default): gone as soon as the tab closes.
- *  - localStorage, with an explicit expiry stamped into the stored value:
- *    survives closing the tab/browser, but only for REMEMBER_DAYS — an
- *    unbounded "stay logged in forever" is too much for a finance app.
- * The expiry is only checked when this module loads (i.e. on page load/
- * reload) — a tab left open across the expiry moment without reloading
- * keeps working until its next reload or a 401 forces a fresh check.
+ * Two tiers, chosen by the "remember me" checkbox:
+ *  - sessionStorage (default): plain, but gone the moment the browser closes.
+ *  - the encrypted vault (lib/credentialVault.ts): survives a restart for
+ *    REMEMBER_DAYS. It used to be plain localStorage, which meant the
+ *    instance password sat on disk recoverable with a single atob() — the
+ *    vault encrypts it under a key the browser refuses to hand back.
+ *
+ * The vault needs a secure context, so on plain HTTP to anything but
+ * localhost the remember tier is simply unavailable (isRememberSupported()) —
+ * the login screen hides the checkbox rather than silently not remembering.
  */
 const SESSION_KEY = "aurum:basicAuth";
-const REMEMBER_KEY = "aurum:basicAuth:remember";
-// 7, not 30: what's stored is the Basic Auth header, i.e. the instance
-// password recoverable in plaintext by anyone who can read localStorage (an
-// XSS, a browser extension, someone with the machine). It can't be revoked
-// server-side, so the only lever on that exposure is how long it sits there.
+// Where the pre-vault "remember me" tier kept its plaintext copy. Read never,
+// deleted always: an install upgrading past that version would otherwise
+// leave the password sitting on disk for up to a week with nothing left to
+// clear it.
+const LEGACY_REMEMBER_KEY = "aurum:basicAuth:remember";
 const REMEMBER_DAYS = 7;
 const REMEMBER_MS = REMEMBER_DAYS * 24 * 60 * 60 * 1000;
 
-interface RememberedEntry {
-  header: string;
-  expiresAt: number; // epoch ms
-}
-
-function readRemembered(): string | null {
+function forgetLegacyRememberedCredentials(): void {
   try {
-    const raw = localStorage.getItem(REMEMBER_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<RememberedEntry>;
-    if (typeof parsed.header !== "string" || typeof parsed.expiresAt !== "number") {
-      localStorage.removeItem(REMEMBER_KEY);
-      return null;
-    }
-    if (Date.now() >= parsed.expiresAt) {
-      localStorage.removeItem(REMEMBER_KEY);
-      return null;
-    }
-    return parsed.header;
+    localStorage.removeItem(LEGACY_REMEMBER_KEY);
   } catch {
-    return null;
+    // storage unavailable — nothing was stored there either
   }
 }
 
@@ -59,11 +47,13 @@ function readSession(): string | null {
   }
 }
 
-function readStored(): string | null {
-  return readRemembered() ?? readSession();
+export function isRememberSupported(): boolean {
+  return isVaultAvailable();
 }
 
-let currentHeader: string | null = readStored();
+forgetLegacyRememberedCredentials();
+
+let currentHeader: string | null = readSession();
 const listeners = new Set<() => void>();
 
 function notify(): void {
@@ -72,6 +62,25 @@ function notify(): void {
 
 export function getAuthHeader(): string | null {
   return currentHeader;
+}
+
+/** Reading the vault is async (IndexedDB + WebCrypto), unlike the
+ * sessionStorage tier that's already resolved by the time this module
+ * finishes loading. LoginGate awaits this before deciding anything, so a
+ * remembered login doesn't flash the login screen on its way in. Started
+ * eagerly at module load rather than on demand, so the work overlaps with
+ * React mounting instead of following it. */
+const restored: Promise<void> = (async () => {
+  if (currentHeader !== null) return;
+  const remembered = await recallCredential();
+  // A login that happened while the vault was being read wins — it's newer.
+  if (remembered === null || currentHeader !== null) return;
+  currentHeader = remembered;
+  notify();
+})();
+
+export function whenAuthRestored(): Promise<void> {
+  return restored;
 }
 
 // btoa() only handles Latin1 — the UI is bilingual RU/EN, so a Cyrillic
@@ -89,21 +98,21 @@ export function buildBasicAuthHeader(username: string, password: string): string
   return `Basic ${encodeUtf8Base64(`${username}:${password}`)}`;
 }
 
-export function setCredentials(username: string, password: string, remember: boolean): void {
+export function setCredentials(username: string, password: string, remember = false): void {
   currentHeader = buildBasicAuthHeader(username, password);
   try {
-    if (remember) {
-      const entry: RememberedEntry = { header: currentHeader, expiresAt: Date.now() + REMEMBER_MS };
-      localStorage.setItem(REMEMBER_KEY, JSON.stringify(entry));
-      sessionStorage.removeItem(SESSION_KEY);
-    } else {
-      sessionStorage.setItem(SESSION_KEY, currentHeader);
-      localStorage.removeItem(REMEMBER_KEY);
-    }
+    sessionStorage.setItem(SESSION_KEY, currentHeader);
   } catch {
     // storage unavailable (private browsing, storage disabled) — the header
     // still works for the rest of this tab's life via the in-memory
     // variable above, it just won't survive a refresh.
+  }
+  // Fire-and-forget: nothing downstream waits on the write, and a vault that
+  // refuses to store only costs this login its persistence.
+  if (remember) {
+    void rememberCredential(currentHeader, REMEMBER_MS);
+  } else {
+    void forgetCredential();
   }
   notify();
 }
@@ -116,10 +125,14 @@ export function clearCredentials(): void {
   currentHeader = null;
   try {
     sessionStorage.removeItem(SESSION_KEY);
-    localStorage.removeItem(REMEMBER_KEY);
+    forgetLegacyRememberedCredentials();
   } catch {
     // ignore — nothing to clean up if storage was never usable
   }
+  // A 401 means the stored credential is wrong or revoked, so the remembered
+  // copy is wrong too — leaving it would restore the same rejected header on
+  // the next reload and loop the user straight back to the login screen.
+  void forgetCredential();
   notify();
 }
 

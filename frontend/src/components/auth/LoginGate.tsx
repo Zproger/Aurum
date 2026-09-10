@@ -2,7 +2,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { Logo } from "@/components/layout/Logo";
 import { LoginScreen } from "@/components/auth/LoginScreen";
 import { NoAuthModal } from "@/components/auth/NoAuthModal";
-import { checkCredentials, useAuthHeader } from "@/lib/auth";
+import { checkCredentials, useAuthHeader, whenAuthRestored } from "@/lib/auth";
 
 // "not-configured" and "authenticated" both render `children` the same way,
 // but they must stay distinct: only "not-configured" means this instance has
@@ -30,13 +30,20 @@ export function LoginGate({ children }: { children: ReactNode }) {
       return;
     }
     let cancelled = false;
-    checkCredentials(null).then((result) => {
-      if (cancelled) return;
-      // A network/backend error here isn't an auth problem — don't block
-      // the user behind a login screen for an unrelated outage, let the
-      // app's own per-page error states (e.g. dashboard.errorLoading) explain it.
-      setProbe(result === "unauthorized" ? "required" : "not-configured");
-    });
+    // Wait for the encrypted "remember me" credential to be read back before
+    // concluding anything: it arrives asynchronously (IndexedDB + WebCrypto),
+    // and probing first would show the login screen for a moment to someone
+    // who is, in fact, already logged in. When it does arrive it sets the
+    // header, which re-runs this effect down the authenticated path above.
+    void whenAuthRestored()
+      .then(() => (cancelled ? null : checkCredentials(null)))
+      .then((result) => {
+        if (cancelled || result === null) return;
+        // A network/backend error here isn't an auth problem — don't block
+        // the user behind a login screen for an unrelated outage, let the
+        // app's own per-page error states (e.g. dashboard.errorLoading) explain it.
+        setProbe(result === "unauthorized" ? "required" : "not-configured");
+      });
     return () => {
       cancelled = true;
     };
