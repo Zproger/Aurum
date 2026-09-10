@@ -129,10 +129,12 @@ Everything else in `.env` (currency, CORS, the port Aurum listens on) has a sens
 ### 4. Start it
 
 ```bash
-docker compose up -d --build
+./start.sh
 ```
 
 This builds the backend and frontend images, starts Postgres, waits for it to report healthy, then starts the backend (which runs every database migration automatically — nothing to do by hand) and finally the frontend. First run takes a minute or two; after that, images are cached and it's seconds.
+
+`start.sh` is a thin wrapper around `docker compose up -d --build` — if you skipped step 3 and there's no `.env` yet, it creates one from `.env.example` and prints a warning about the defaults it's running on (no password, default Postgres credentials) before starting anything, instead of silently starting an unprotected instance. You can still run `docker compose up -d --build` directly if you prefer; just make sure `.env` exists first.
 
 ### 5. Open it
 
