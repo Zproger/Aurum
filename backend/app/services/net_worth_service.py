@@ -57,7 +57,10 @@ _CLASS_META: dict[str, tuple[str, str, str]] = {
     AssetClass.REAL_ESTATE.value: ("Недвижимость", "#eda100", "building-2"),  # slot 4 yellow
     AssetClass.VEHICLES.value: ("Транспорт", "#e87ba4", "car"),  # slot 5 magenta
     AssetClass.PRECIOUS_METALS.value: ("Драгметаллы", "#008300", "gem"),  # slot 6 green
-    AssetClass.OTHER.value: ("Прочее", "#4a3aa7", "package"),  # slot 7 violet
+    AccetClass.DEPOSITS.value: ("Вклад",'',''), # slot 7 No color
+    AccetClass.SAVINGS.value: ("Накопительный счет",'',''), # slot 8 No color
+    AccetClass.FOREIGN_CURRENCY.value: ("Валютные сбережения",'',''), # slot 9 No color
+    AssetClass.OTHER.value: ("Прочее", "#4a3aa7", "package"),  # slot 10 violet
 }
 
 _ROLE_META: dict[CapitalRole, tuple[str, str]] = {

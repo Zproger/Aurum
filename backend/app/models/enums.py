@@ -32,6 +32,9 @@ class AssetClass(str, enum.Enum):
     REAL_ESTATE = "real_estate"
     VEHICLES = "vehicles"
     PRECIOUS_METALS = "precious_metals"
+    DEPOSITS = "deposits"
+    SAVINGS = "savings"
+    FOREIGN_CURRENCY = "foreign_currency"
     OTHER = "other"
 
 

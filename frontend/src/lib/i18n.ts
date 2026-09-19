@@ -86,6 +86,9 @@ const ru = {
   "netWorth.assetClass.real_estate": "Недвижимость",
   "netWorth.assetClass.vehicles": "Транспорт",
   "netWorth.assetClass.precious_metals": "Драгметаллы",
+  "netWorth.assetClass.deposits": "Вклад",
+  "netWorth.assetClass.savings": "Накопительны счет",
+  "netWorth.assetClass.foreign_currency": "Валютные сбережения",
   "netWorth.assetClass.other": "Другое",
   "netWorth.assetClass.cash": "Наличные",
 

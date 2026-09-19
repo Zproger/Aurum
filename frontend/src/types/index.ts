@@ -193,7 +193,7 @@ export interface DashboardSummary {
   spending_by_category: CategoryBreakdownItem[];
 }
 
-export type AssetClass = "investments" | "crypto" | "real_estate" | "vehicles" | "precious_metals" | "other";
+export type AssetClass = "investments" | "crypto" | "real_estate" | "vehicles" | "precious_metals"| "deposits"| "savings" | "foreign_currency" | "other";
 export type NetWorthRange = "30d" | "90d" | "1y" | "5y" | "all";
 export type CapitalRole = "income" | "neutral" | "drain";
 export type RiskLevel = "low" | "medium" | "high";
