@@ -349,6 +349,54 @@ export interface CategoryRankingReport {
   items: CategoryRankingItem[];
 }
 
+// One top-level category's share of a tag's total. category_id is null (and
+// name empty) for the share that had no category at all — the frontend
+// labels that row from its own translations.
+export interface TagRankingCategoryItem {
+  category_id: number | null;
+  name: string;
+  color: string;
+  icon: string | null;
+  amount: string;
+}
+
+export interface TagRankingItem {
+  tag_id: number;
+  name: string;
+  // Borrowed from the category this tag spent the most on — a tag has no
+  // color of its own (backend/app/models/tag.py).
+  color: string;
+  amount: string;
+  // Share of the period's total spending of this kind, not of its tagged
+  // part: tags overlap, so these deliberately don't add up to 100.
+  percent: number;
+  transaction_count: number;
+  categories: TagRankingCategoryItem[];
+}
+
+export interface TagRankingReport {
+  start_date: string | null;
+  end_date: string | null;
+  total_amount: string;
+  // The part of total_amount carrying at least one tag, counted once per
+  // transaction however many tags it has.
+  tagged_amount: string;
+  items: TagRankingItem[];
+}
+
+// The tag-side twin of CategorySpendingReport, reusing its point type since
+// a point is just (year, month, amount) either way.
+export interface TagSpendingReport {
+  tag_id: number;
+  tag_name: string;
+  start_date: string | null;
+  end_date: string | null;
+  total_amount: string;
+  transaction_count: number;
+  average_per_month: string;
+  series: CategorySpendingPoint[];
+}
+
 export interface Goal {
   id: number;
   name: string;

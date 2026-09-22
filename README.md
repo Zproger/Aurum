@@ -70,7 +70,7 @@ A CoinMarketCap-style portfolio tab for the coins you actually hold: live price 
 Set a monthly limit per category and watch progress bars fill up. Track savings goals with a running contribution log. Register recurring bills and post them with one click when they're due — nothing runs automatically in the background.
 
 ### 📊 Reports & Advice
-Rank every category by total spend over any custom period to find what's actually eating your budget. A rules-based Advice tab surfaces rising spending categories, unbudgeted top expenses, and month-over-month savings rate trends in plain language.
+Rank every category by total spend over any custom period to find what's actually eating your budget — or switch the same report to rank **tags** instead, to total up a trip, an occasion or a person across every category at once (each tag broken down by what the money went on, and measured against the whole period so you can see how much of it your tags actually cover). A rules-based Advice tab surfaces rising spending categories, unbudgeted top expenses, and month-over-month savings rate trends in plain language.
 
 ### 🧮 Returns Calculator
 A standalone ROI calculator: enter what you'd invest and what it would pay you monthly, and see the annual return, payback period, and a compound-interest projection — with a year-by-year comparison chart of compounding vs. just banking the cash — before you commit to a purchase.

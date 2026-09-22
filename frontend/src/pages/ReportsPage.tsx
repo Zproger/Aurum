@@ -6,10 +6,13 @@ import { PillSelector } from "@/components/layout/PillSelector";
 import { YearRangeSelector } from "@/components/layout/YearSelector";
 import { CategoryRankingCard } from "@/components/reports/CategoryRankingCard";
 import { CategorySpendingChart } from "@/components/reports/CategorySpendingChart";
+import { TagRankingCard } from "@/components/reports/TagRankingCard";
+import { TagSpendingChart } from "@/components/reports/TagSpendingChart";
 import { TransactionsTable } from "@/components/transactions/TransactionsTable";
 import { TransactionFormModal } from "@/components/transactions/TransactionFormModal";
 import { useCategories } from "@/hooks/useCategories";
-import { useCategoryRanking, useCategorySpendingReport } from "@/hooks/useReports";
+import { useCategoryRanking, useCategorySpendingReport, useTagRanking, useTagSpendingReport } from "@/hooks/useReports";
+import { useTags } from "@/hooks/useTags";
 import { useDeleteTransaction, useTransactions, useTransactionYears } from "@/hooks/useTransactions";
 import type { TransactionSort } from "@/api/transactions";
 import { computeRange, type CustomYearRange, type RangePreset } from "@/lib/dateRange";
@@ -18,6 +21,13 @@ import { buildHierarchicalCategories, translateCategoryName } from "@/lib/catego
 import type { Transaction } from "@/types";
 
 const PAGE_SIZE = 20;
+
+/** Which axis the page is reporting along: down the categories ("what kind
+ * of spend was this") or across the tags ("which event/project was it for").
+ * The two answer genuinely different questions over the same transactions —
+ * see backend/app/models/tag.py — so they're modes of one page rather than
+ * two pages. */
+type ReportMode = "category" | "tag";
 
 export function ReportsPage() {
   const { t, language } = useTranslation();
@@ -28,9 +38,16 @@ export function ReportsPage() {
     { value: "5y", label: t("reports.range5y") },
     { value: "custom", label: t("reports.rangeCustom") },
   ];
+  const MODE_OPTIONS: Array<{ value: ReportMode; label: string }> = [
+    { value: "category", label: t("reports.modeCategory") },
+    { value: "tag", label: t("reports.modeTag") },
+  ];
   const { data: categories } = useCategories();
+  const { data: tags } = useTags();
   const { data: years } = useTransactionYears();
+  const [mode, setMode] = useState<ReportMode>("category");
   const [categoryId, setCategoryId] = useState<number | null>(null);
+  const [tagId, setTagId] = useState<number | null>(null);
   const [range, setRange] = useState<RangePreset>("all");
   const [customRange, setCustomRange] = useState<CustomYearRange>({
     fromYear: now.getFullYear(),
@@ -48,11 +65,26 @@ export function ReportsPage() {
     }
   }, [categories, categoryId]);
 
+  // A tag deleted elsewhere (Transactions page) would otherwise leave the
+  // detail chart asking the API for an id that no longer resolves.
+  useEffect(() => {
+    if (tagId !== null && tags && !tags.some((tag) => tag.id === tagId)) setTagId(null);
+  }, [tags, tagId]);
+
   const { startDate, endDate } = computeRange(range, customRange);
+  const isTagMode = mode === "tag";
   const { data: ranking, isLoading: isRankingLoading } = useCategoryRanking("expense", startDate, endDate);
+  const { data: tagRanking, isLoading: isTagRankingLoading } = useTagRanking("expense", startDate, endDate);
   const { data: report, isLoading: isReportLoading } = useCategorySpendingReport(categoryId, startDate, endDate);
+  const { data: tagReport, isLoading: isTagReportLoading } = useTagSpendingReport(
+    isTagMode ? tagId : null,
+    "expense",
+    startDate,
+    endDate
+  );
   const { data: transactions, isLoading: isTransactionsLoading } = useTransactions({
-    category_id: categoryId ?? undefined,
+    category_id: isTagMode ? undefined : categoryId ?? undefined,
+    tag_id: isTagMode ? tagId ?? undefined : undefined,
     start_date: startDate,
     end_date: endDate,
     sort,
@@ -60,6 +92,15 @@ export function ReportsPage() {
     page_size: PAGE_SIZE,
   });
   const deleteTransaction = useDeleteTransaction();
+
+  // The ranking is ordered by amount, so its first row is the tag worth
+  // looking at first — a better landing selection than whichever tag
+  // happens to sort first alphabetically in the picker.
+  useEffect(() => {
+    if (isTagMode && tagId === null && tagRanking && tagRanking.items.length > 0) {
+      setTagId(tagRanking.items[0].tag_id);
+    }
+  }, [isTagMode, tagId, tagRanking]);
 
   // Hierarchical within each group (a subcategory right under its own
   // parent, indented) — a bare "Sweets" option next to top-level categories
@@ -73,6 +114,12 @@ export function ReportsPage() {
     language
   );
   const totalPages = transactions ? Math.max(1, Math.ceil(transactions.total / PAGE_SIZE)) : 1;
+  const selectedTagColor = tagRanking?.items.find((item) => item.tag_id === tagId)?.color;
+
+  function handleModeChange(value: ReportMode) {
+    setMode(value);
+    setPage(1);
+  }
 
   function handleEdit(transaction: Transaction) {
     setEditingTransaction(transaction);
@@ -89,38 +136,63 @@ export function ReportsPage() {
     <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="max-w-xs flex-1">
-          <Label htmlFor="report-category">{t("reports.categoryLabel")}</Label>
-          <Select
-            id="report-category"
-            value={categoryId ?? ""}
-            onChange={(event) => {
-              setCategoryId(Number(event.target.value));
-              setPage(1);
-            }}
-          >
-            {expenseCategories.length > 0 && (
-              <optgroup label={t("reports.expenseGroup")}>
-                {expenseCategories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.indented ? `    ↳ ` : ""}
-                    {translateCategoryName(category.name)}
+          {isTagMode ? (
+            <>
+              <Label htmlFor="report-tag">{t("reports.tagLabel")}</Label>
+              <Select
+                id="report-tag"
+                value={tagId ?? ""}
+                disabled={!tags || tags.length === 0}
+                onChange={(event) => {
+                  setTagId(event.target.value ? Number(event.target.value) : null);
+                  setPage(1);
+                }}
+              >
+                {(!tags || tags.length === 0) && <option value="">{t("reports.noTagsYet")}</option>}
+                {tags?.map((tag) => (
+                  <option key={tag.id} value={tag.id}>
+                    {tag.name}
                   </option>
                 ))}
-              </optgroup>
-            )}
-            {incomeCategories.length > 0 && (
-              <optgroup label={t("reports.incomeGroup")}>
-                {incomeCategories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.indented ? `    ↳ ` : ""}
-                    {translateCategoryName(category.name)}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-          </Select>
+              </Select>
+            </>
+          ) : (
+            <>
+              <Label htmlFor="report-category">{t("reports.categoryLabel")}</Label>
+              <Select
+                id="report-category"
+                value={categoryId ?? ""}
+                onChange={(event) => {
+                  setCategoryId(Number(event.target.value));
+                  setPage(1);
+                }}
+              >
+                {expenseCategories.length > 0 && (
+                  <optgroup label={t("reports.expenseGroup")}>
+                    {expenseCategories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.indented ? `    ↳ ` : ""}
+                        {translateCategoryName(category.name)}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {incomeCategories.length > 0 && (
+                  <optgroup label={t("reports.incomeGroup")}>
+                    {incomeCategories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.indented ? `    ↳ ` : ""}
+                        {translateCategoryName(category.name)}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </Select>
+            </>
+          )}
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
+          <PillSelector options={MODE_OPTIONS} value={mode} onChange={handleModeChange} />
           <PillSelector
             options={RANGE_OPTIONS}
             value={range}
@@ -143,17 +215,35 @@ export function ReportsPage() {
         </div>
       </div>
 
-      <CategorySpendingChart report={report} isLoading={isReportLoading} />
-
-      <CategoryRankingCard
-        items={ranking?.items ?? []}
-        isLoading={isRankingLoading}
-        selectedCategoryId={categoryId}
-        onSelectCategory={(id) => {
-          setCategoryId(id);
-          setPage(1);
-        }}
-      />
+      {isTagMode ? (
+        <>
+          <TagSpendingChart report={tagReport} color={selectedTagColor} isLoading={isTagReportLoading} />
+          <TagRankingCard
+            items={tagRanking?.items ?? []}
+            isLoading={isTagRankingLoading}
+            totalAmount={tagRanking?.total_amount}
+            taggedAmount={tagRanking?.tagged_amount}
+            selectedTagId={tagId}
+            onSelectTag={(id) => {
+              setTagId(id);
+              setPage(1);
+            }}
+          />
+        </>
+      ) : (
+        <>
+          <CategorySpendingChart report={report} isLoading={isReportLoading} />
+          <CategoryRankingCard
+            items={ranking?.items ?? []}
+            isLoading={isRankingLoading}
+            selectedCategoryId={categoryId}
+            onSelectCategory={(id) => {
+              setCategoryId(id);
+              setPage(1);
+            }}
+          />
+        </>
+      )}
 
       <Card>
         <CardHeader>
