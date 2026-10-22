@@ -362,6 +362,23 @@ touches (rolled up to the shared parent), not just once under a single category 
 $60/$24.20 between Sweets and Alcohol above contributes exactly those amounts to each subcategory's
 total under Groceries.
 
+The tag reports read the same split differently, and deliberately so: a tag sits on the
+*transaction*, not on a category or a split line, so `/reports/tag-ranking` counts that receipt's
+full $84.20 toward each tag it carries and uses the split only to say *what the money went on*
+inside that tag's breakdown. Two consequences worth knowing before building on these numbers:
+
+- **Tag totals overlap.** One transaction can carry any number of tags and each owns it whole, so
+  summing the ranking's `items` can exceed what the period actually saw. Each item's `percent` is
+  therefore measured against `total_amount` — everything spent in the period, tagged or not — and
+  the percentages are each meaningful on their own but do not add up to 100.
+- **`tagged_amount` counts each transaction once**, however many tags it has, so
+  `total_amount - tagged_amount` is exactly the untagged remainder — i.e. how much of the period
+  these tags actually account for.
+
+A tag has no `kind` of its own (a category is either an expense or an income one, but the same tag
+can sit on both sides of the ledger), which is why `kind` is a query parameter on both tag
+endpoints rather than a property of the subject.
+
 ### Bulk create (`POST /transactions/bulk`)
 
 Used by the CSV import wizard, but callable directly for any bulk load (e.g. syncing from a bank
@@ -715,6 +732,8 @@ into an external dashboard without recomputing it yourself.
 | `GET` | `/cash-flow` | Income vs. expense, month by month. `?start_date=&end_date=` (default: no bound, i.e. all history). |
 | `GET` | `/reports/category-spending` | One category's spend over time. `?category_id=` (required) `&start_date=&end_date=`. |
 | `GET` | `/reports/category-ranking` | All categories ranked by total spend over a period. `?kind=expense\|income` (default `expense`) `&start_date=&end_date=`. |
+| `GET` | `/reports/tag-ranking` | All tags ranked by total spend over a period, each with a per-category breakdown. `?kind=expense\|income` (default `expense`) `&start_date=&end_date=`. |
+| `GET` | `/reports/tag-spending` | One tag's spend over time. `?tag_id=` (required) `&kind=expense\|income` (default `expense`) `&start_date=&end_date=`. |
 
 **`GET /dashboard/summary` response:**
 
@@ -778,7 +797,7 @@ Single row, created automatically on first run — there's nothing to create, on
   "risky_allocation_threshold_percent": 20,
   "idle_cash_threshold_amount": "1000.00",
   "idle_cash_threshold_days": 60,
-  "app_version": "1.1.8"
+  "app_version": "1.1.9"
 }
 ```
 
