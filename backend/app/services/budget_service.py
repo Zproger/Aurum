@@ -97,7 +97,7 @@ async def get_budget_status(session: AsyncSession, year: int, month: int) -> Bud
     # sum on Transaction.category_id alone would silently under-count a
     # budget funded partly by split purchases.
     plain_stmt = (
-        select(Transaction.category_id, func.coalesce(func.sum(Transaction.amount), 0))
+        select(Transaction.category_id, func.coalesce(func.sum(Transaction.amount_usd), 0))
         .where(
             Transaction.category_id.in_(counted_ids),
             Transaction.type == TransactionType.EXPENSE,
@@ -107,7 +107,7 @@ async def get_budget_status(session: AsyncSession, year: int, month: int) -> Bud
         .group_by(Transaction.category_id)
     )
     split_stmt = (
-        select(TransactionSplit.category_id, func.coalesce(func.sum(TransactionSplit.amount), 0))
+        select(TransactionSplit.category_id, func.coalesce(func.sum(TransactionSplit.amount_usd), 0))
         .join(Transaction, Transaction.id == TransactionSplit.transaction_id)
         .where(
             TransactionSplit.category_id.in_(counted_ids),

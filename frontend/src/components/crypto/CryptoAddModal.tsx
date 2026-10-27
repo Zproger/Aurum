@@ -1,11 +1,14 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { ApiError } from "@/api/client";
+import { fetchFxQuote, type FxQuote } from "@/api/fx";
 import { searchCryptoCoins } from "@/api/crypto";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { useCreateCryptoHolding, useCryptoHoldings, useCryptoPortfolios } from "@/hooks/useCrypto";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
+import { formatCryptoAmount } from "@/lib/format";
+import { CURRENCIES, getCurrencyLabel } from "@/lib/currency";
 import type { CryptoSearchResult, RiskLevel } from "@/types";
 
 const RISK_LEVELS: RiskLevel[] = ["low", "medium", "high"];
@@ -23,7 +26,7 @@ interface CryptoAddModalProps {
  * enter how much of it is held. No separate multi-step wizard — unlike CSV
  * import, there's nothing here worth a dedicated page for. */
 export function CryptoAddModal({ open, onClose, defaultPortfolioId }: CryptoAddModalProps) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const createHolding = useCreateCryptoHolding();
   const { data: portfolios } = useCryptoPortfolios();
   // Every portfolio's holdings, purely to build the network datalist below
@@ -42,12 +45,30 @@ export function CryptoAddModal({ open, onClose, defaultPortfolioId }: CryptoAddM
   const [portfolioId, setPortfolioId] = useState<number | null>(null);
   const [quantity, setQuantity] = useState("");
   const [pricePerUnit, setPricePerUnit] = useState("");
+  const [priceCurrency, setPriceCurrency] = useState("USD");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   // Defaults to "high", same as the backend default — crypto is this app's
   // own textbook HIGH risk example — but overridable per coin here.
   const [riskLevel, setRiskLevel] = useState<RiskLevel>("high");
   const [network, setNetwork] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [quote, setQuote] = useState<FxQuote | null>(null);
+  const [quoteError, setQuoteError] = useState(false);
+
+  useEffect(() => {
+    setQuote(null);
+    setQuoteError(false);
+    if (!open || !selected || !date || !priceCurrency) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      fetchFxQuote(priceCurrency, date).then((value) => {
+        if (!cancelled) { setQuote(value); setQuoteError(false); }
+      }).catch(() => {
+        if (!cancelled) { setQuote(null); setQuoteError(true); }
+      });
+    }, 350);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [open, selected, priceCurrency, date]);
 
   useEffect(() => {
     if (open) return;
@@ -56,6 +77,7 @@ export function CryptoAddModal({ open, onClose, defaultPortfolioId }: CryptoAddM
     setSelected(null);
     setQuantity("");
     setPricePerUnit("");
+    setPriceCurrency("USD");
     setDate(new Date().toISOString().slice(0, 10));
     setRiskLevel("high");
     setNetwork("");
@@ -113,6 +135,7 @@ export function CryptoAddModal({ open, onClose, defaultPortfolioId }: CryptoAddM
         thumb_url: selected.thumb_url,
         quantity,
         price_per_unit: pricePerUnit,
+        price_currency: priceCurrency,
         date,
         risk_level: riskLevel,
         network: network.trim() || null,
@@ -224,6 +247,17 @@ export function CryptoAddModal({ open, onClose, defaultPortfolioId }: CryptoAddM
                 onChange={(event) => setPricePerUnit(event.target.value)}
               />
             </div>
+          </div>
+
+          <div>
+            <Label htmlFor="crypto-price-currency">{language === "ru" ? "Валюта цены покупки" : "Purchase price currency"}</Label>
+            <Select id="crypto-price-currency" value={priceCurrency} onChange={(event) => setPriceCurrency(event.target.value)}>
+              {CURRENCIES.map((currency) => <option key={currency.code} value={currency.code}>{getCurrencyLabel(currency.code, language)}</option>)}
+            </Select>
+            {quote && pricePerUnit && Number(pricePerUnit) > 0 && <p className="mt-1 text-xs text-text-muted">
+              {`1 ${priceCurrency} = ${Number(quote.rate_to_usd).toPrecision(6)} USD · ${formatCryptoAmount(Number(pricePerUnit) * Number(quote.rate_to_usd), "USD")} / ${selected.symbol} · ${quote.rate_date}`}
+            </p>}
+            {quoteError && <p className="mt-1 text-xs text-danger">{language === "ru" ? "Курс временно недоступен" : "Exchange rate unavailable"}</p>}
           </div>
 
           <div>

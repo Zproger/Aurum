@@ -28,6 +28,7 @@ import {
   type DateFormat,
 } from "@/lib/csv";
 import { formatCurrency } from "@/lib/format";
+import { CURRENCIES, getCurrencyLabel } from "@/lib/currency";
 import { ApiError } from "@/api/client";
 import { useTranslation } from "@/lib/i18n";
 import type { TransactionInput } from "@/types";
@@ -100,7 +101,7 @@ function resolveDefaults(headers: string[], preset: BankPreset | null): { mappin
 }
 
 export function CsvImportPage() {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const navigate = useNavigate();
   const { data: accounts } = useAccounts();
   const { data: categories } = useCategories();
@@ -108,6 +109,8 @@ export function CsvImportPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [accountId, setAccountId] = useState("");
+  const [importCurrency, setImportCurrency] = useState("USD");
+  const [currencyColumn, setCurrencyColumn] = useState("");
   const [step, setStep] = useState<Step>("upload");
   const [fileName, setFileName] = useState("");
   const [fileBuffer, setFileBuffer] = useState<ArrayBuffer | null>(null);
@@ -155,6 +158,7 @@ export function CsvImportPage() {
     const preset = resolvePreset(headers, presetChoice);
     const defaults = resolveDefaults(headers, preset);
     setMapping(defaults.mapping);
+    setCurrencyColumn(headers.find((header) => /^(валюта платежа|валюта картки|currency|account currency)$/i.test(header.trim())) ?? "");
     // Formats are only overwritten when a bank profile dictates them; with
     // no profile, a date format the user picked by hand survives an
     // encoding switch (the fresh-file reset lives in handleFileSelected).
@@ -219,7 +223,7 @@ export function CsvImportPage() {
   const existingKeys = useMemo(() => {
     const keys = new Set<string>();
     for (const tx of existingTransactions.data ?? []) {
-      keys.add(transactionDedupeKey(tx.date, tx.type, tx.amount, tx.description));
+      keys.add(transactionDedupeKey(tx.date, tx.type, tx.amount, tx.description, tx.currency));
     }
     return keys;
   }, [existingTransactions.data]);
@@ -233,6 +237,7 @@ export function CsvImportPage() {
     const merchantIdx = mapping.merchant ? headers.indexOf(mapping.merchant) : -1;
     const notesIdx = mapping.notes ? headers.indexOf(mapping.notes) : -1;
     const categoryIdx = mapping.category ? headers.indexOf(mapping.category) : -1;
+    const currencyIdx = currencyColumn ? headers.indexOf(currencyColumn) : -1;
 
     const freshRows: TransactionInput[] = [];
     const duplicateRows: TransactionInput[] = [];
@@ -246,6 +251,11 @@ export function CsvImportPage() {
       const rawMerchant = merchantIdx >= 0 ? (cells[merchantIdx] ?? "").trim() : "";
       const rawNotes = notesIdx >= 0 ? (cells[notesIdx] ?? "").trim() : "";
       const rawCategory = categoryIdx >= 0 ? (cells[categoryIdx] ?? "").trim() : "";
+      const currency = (currencyIdx >= 0 ? (cells[currencyIdx] ?? "").trim().toUpperCase() : "") || importCurrency;
+      if (!CURRENCIES.some((option) => option.code === currency)) {
+        skippedRows.push({ row: rowNumber, reason: `Unsupported currency: ${currency}` });
+        return;
+      }
 
       // Bank-profile row filter first (e.g. T-Bank's "Статус" = FAILED):
       // a declined payment parses perfectly well as a date + amount, and
@@ -281,13 +291,14 @@ export function CsvImportPage() {
         transfer_account_id: null,
         type,
         amount: Math.abs(amount).toFixed(2),
+        currency,
         description,
         merchant: rawMerchant || null,
         notes: rawNotes || null,
         date: isoDate,
       };
 
-      const key = transactionDedupeKey(candidate.date, candidate.type, candidate.amount, candidate.description);
+      const key = transactionDedupeKey(candidate.date, candidate.type, candidate.amount, candidate.description, currency);
       if (existingKeys.has(key)) {
         duplicateRows.push(candidate);
       } else {
@@ -301,7 +312,7 @@ export function CsvImportPage() {
       duplicateCount: duplicateRows.length,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, headers, dataRows, mapping, dateFormat, amountFormat, categoryLookup, accountId, existingKeys, includeDuplicates, activePreset, t]);
+  }, [step, headers, dataRows, mapping, dateFormat, amountFormat, categoryLookup, accountId, existingKeys, includeDuplicates, activePreset, importCurrency, currencyColumn, t]);
 
   async function handleFileSelected(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -335,6 +346,7 @@ export function CsvImportPage() {
     setFileBuffer(buffer);
     setEncoding(detectedEncoding);
     setMapping(defaults.mapping);
+    setCurrencyColumn(headerRow.find((header) => /^(валюта платежа|валюта картки|currency|account currency)$/i.test(header.trim())) ?? "");
     setDateFormat(defaults.dateFormat);
     setAmountFormat(defaults.amountFormat);
     setIncludeDuplicates(false);
@@ -397,7 +409,10 @@ export function CsvImportPage() {
           <CardTitle>{t("transactions.import.accountLabel")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <Select value={accountId} onChange={(event) => setAccountId(event.target.value)} className="sm:w-72">
+          <Select value={accountId} onChange={(event) => {
+            setAccountId(event.target.value);
+            setImportCurrency(accounts?.find((account) => String(account.id) === event.target.value)?.currency ?? "USD");
+          }} className="sm:w-72">
             <option value="" disabled>
               {t("transactions.form.selectAccount")}
             </option>
@@ -513,6 +528,19 @@ export function CsvImportPage() {
                       {t(`transactions.import.amountFormat.${format}`)}
                     </option>
                   ))}
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="map-currency-column">{language === "ru" ? "Столбец валюты" : "Currency column"}</Label>
+                <Select id="map-currency-column" value={currencyColumn} onChange={(event) => setCurrencyColumn(event.target.value)}>
+                  <option value="">{language === "ru" ? "Одна валюта для всего файла" : "One currency for the whole file"}</option>
+                  {headers.map((header) => <option key={header} value={header}>{header}</option>)}
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="map-import-currency">{language === "ru" ? "Валюта по умолчанию" : "Default currency"}</Label>
+                <Select id="map-import-currency" value={importCurrency} onChange={(event) => setImportCurrency(event.target.value)}>
+                  {CURRENCIES.map((currency) => <option key={currency.code} value={currency.code}>{getCurrencyLabel(currency.code, language)}</option>)}
                 </Select>
               </div>
               <div>
@@ -669,7 +697,7 @@ export function CsvImportPage() {
                               }`}
                             >
                               {item.type === "expense" ? "-" : "+"}
-                              {formatCurrency(item.amount)}
+                              {formatCurrency(item.amount, item.currency)}
                             </td>
                           </tr>
                         ))}

@@ -79,8 +79,9 @@ update, and delete everything.
 - **Format:** all request and response bodies are JSON (`Content-Type: application/json`).
 - **IDs:** integer, auto-incrementing, assigned by the server.
 - **Money fields** (`amount`, `monthly_limit`, `value`, ...): decimal numbers as JSON numbers or
-  strings, up to 14 digits with 2 decimal places. Aurum is single-currency per account/asset — there
-  is no built-in FX conversion.
+  strings, generally up to 14 digits with 2 decimal places. Transaction amounts retain their
+  selected currency; aggregate figures use USD. The server fetches a daily reference rate from
+  Frankfurter, stores the applied rate, and keeps each posted transaction's USD amount stable.
 - **Dates:** `YYYY-MM-DD` (ISO 8601 date, no time component). Timestamps (e.g. backup `exported_at`)
   are full ISO 8601 datetimes.
 - **Colors:** 6-digit hex strings, e.g. `"#4f46e5"`.
@@ -89,6 +90,17 @@ update, and delete everything.
   `{"parent_id": null}` explicitly clears a category's parent, while omitting `parent_id` entirely
   leaves it as-is.
 - **Enums** are plain lowercase strings — see each resource's table below for the valid values.
+
+**FX behavior:** the backend uses Frankfurter's latest daily reference rate for today's entries
+and a date-specific rate for historical entries. The original amount, the applied rate/date, and
+the USD amount are kept on each transaction. A transfer also stores the amount credited to its
+destination account, which can be supplied explicitly when a bank's actual conversion differs
+from the reference rate. Account balances are in each account's own currency. Existing records
+created before this schema had no currency metadata: the migration preserves their former
+numeric USD report totals and marks their original currency from the account. Review older
+non-USD records because their historical conversion cannot be inferred reliably.
+`GET /fx/quote?currency=EUR&date=2026-08-29` previews the rate and observation date without
+posting a transaction. Rates are reference midpoints and may differ from the amounts a bank books.
 
 ## Errors
 
@@ -152,8 +164,8 @@ stored — there's no "set balance" endpoint.
 
 - `name`: required, 1–100 chars.
 - `type`: optional, defaults to `checking`.
-- `currency`: optional 3-letter code, defaults to `USD`. Purely a display label — not validated
-  against ISO 4217 and not used for conversion.
+- `currency`: optional uppercase 3-letter code, defaults to `USD`. Balances are in this currency;
+  accounts with transactions cannot change currency without recreating their history.
 - `color`: optional hex color.
 - `is_archived` (update only): archive/unarchive without deleting. An archived account is hidden
   from the default account list but its transactions and balance remain intact.
@@ -241,6 +253,7 @@ The core resource. A transaction is `income`, `expense`, or `transfer`.
 |---|---|---|
 | `GET` | `/transactions` | Paginated, filterable list. See query params below. |
 | `GET` | `/transactions/years` | Every year with data (plus the current year), for a year picker. Returns `[2024, 2025, 2026]`. |
+| `GET` | `/transactions/quote` | Preview the conversion for an amount, currency, date, and source/destination accounts. |
 | `POST` | `/transactions` | Create one transaction. |
 | `POST` | `/transactions/bulk` | Create up to 5000 transactions in one all-or-nothing batch (CSV import). |
 | `PATCH` | `/transactions/{id}` | Update a transaction (partial). |
@@ -282,6 +295,7 @@ The core resource. A transaction is `income`, `expense`, or `transfer`.
   "transfer_account_id": null,
   "type": "expense",
   "amount": 42.50,
+  "currency": "EUR",
   "description": "Groceries",
   "merchant": "Whole Foods",
   "notes": null,
@@ -301,6 +315,13 @@ Field rules, enforced server-side:
     `category_id` must be omitted — transfers aren't categorized. `splits` aren't valid either.
 - `amount`: required, `> 0` (transfers/expenses aren't signed negative — direction comes from
   `type`), up to 14 digits, 2 decimal places.
+- `currency`: optional uppercase 3-letter currency code; omitted values use the source account's
+  currency. For past dates the server looks up that day's reference rate; today uses the latest
+  available rate. The request fails if a required rate is unavailable.
+- `transfer_amount`: optional only on transfers. The amount actually received in the destination
+  account's currency; if omitted, the server calculates it from reference rates.
+- `account_amount`: optional amount actually debited/credited in the source account's currency;
+  if omitted, the server calculates it from reference rates. Useful when a bank's conversion differs.
 - `description`: required, 1–255 chars. Auto-capitalized server-side (first letter uppercased).
 - `merchant`: optional, up to 150 chars.
 - `notes`: optional, free text.
@@ -315,7 +336,8 @@ omit to leave tags untouched; send (even `[]`) to replace the full tag set. `spl
 splits untouched; send (even `[]`) to replace the full split set — send `[]` together with a
 `category_id` to turn a split transaction back into a normal single-category one.
 
-**Response** (`TransactionRead`): the input fields plus `id`, and the nested `account`
+**Response** (`TransactionRead`): the input fields plus `id`, `amount_usd`, `account_amount`,
+`transfer_amount`, `fx_rate_to_usd`, `fx_rate_date`, and the nested `account`
 (`AccountRead`), `category` (`CategoryRead` or `null`), `tags` (`TagRead[]`), `splits`
 (`TransactionSplitRead[]`, empty for a normal non-split transaction).
 
@@ -613,6 +635,7 @@ of the whole request failing.
   "thumb_url": "https://...",
   "quantity": "0.05",
   "price_per_unit": "55000",
+  "price_currency": "USD",
   "date": "2026-08-01",
   "note": null,
   "risk_level": "high",
@@ -623,7 +646,8 @@ of the whole request failing.
 `coingecko_id` is CoinGecko's own stable id (not the ticker — tickers collide across unrelated
 coins) — get it from `/crypto/search` rather than guessing. `quantity`/`price_per_unit` support up to
 18 decimal places (wei-level token amounts). `price_per_unit` is what you actually paid, in the app's
-display currency — it's stored as-is, never re-derived from market data later. `risk_level` is
+selected `price_currency` (default `USD`). The entered price, applied rate, and USD price are
+stored together; cost basis uses USD. `risk_level` is
 optional, defaults to `high`. `network` is optional free text (e.g. `"Ethereum"`, `"Tron"`) — not
 validated against a fixed list, since the same coin can be issued on chains CoinGecko doesn't
 distinguish by `coingecko_id` alone (a stablecoin held across several networks carries different
@@ -784,7 +808,7 @@ Single row, created automatically on first run — there's nothing to create, on
 
 - `app_version`: read-only, ignored on `PATCH` — the running app's release, shown in the UI under
   Settings. It lives here rather than on the unauthenticated `/health`.
-- `currency`: 3-letter uppercase code — display-only, no conversion.
+- `currency`: fixed to `USD`; transaction and account currencies are selected on their own records.
 - `negative_cash_flow_threshold_months` / `net_worth_decline_threshold_months`: consecutive months
   before the corresponding alert fires (`1`–`24`).
 - `risky_allocation_threshold_percent`: max % of total capital allowed in medium/high risk tiers
@@ -897,9 +921,9 @@ hands the message text to an LLM, asks it to extract a `TransactionCreate` objec
 that straight to `/transactions`.
 
 For example, texting the bot "Add a $12 expense for coffee to my Cash account" or "I spent 30 EUR at a
-shop abroad, convert that to dollars and log it under Cash" — the LLM resolves account/category names
-to IDs (via `GET /accounts` / `GET /categories`), and, since Aurum itself never converts currency (see
-[Conventions](#conventions)), converts EUR → USD itself before calling the API:
+shop abroad and log it under Cash" — the LLM resolves account/category names to IDs (via
+`GET /accounts` / `GET /categories`) and sends the original amount and currency. Aurum fetches the
+reference rate and converts it to USD:
 
 ```bash
 curl -u user:pass -X POST http://localhost:3000/api/transactions \
@@ -908,7 +932,8 @@ curl -u user:pass -X POST http://localhost:3000/api/transactions \
     "account_id": 3,
     "category_id": 4,
     "type": "expense",
-    "amount": 32.40,
+    "amount": 30.00,
+    "currency": "EUR",
     "description": "Shopping",
     "date": "2026-08-30"
   }'

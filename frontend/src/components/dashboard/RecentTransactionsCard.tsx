@@ -62,12 +62,17 @@ export function RecentTransactionsCard({ year, month }: RecentTransactionsCardPr
                     </span>
                   </span>
                   <span
-                    className={`shrink-0 text-sm font-medium tabular-nums ${
+                    className={`shrink-0 text-right text-sm font-medium tabular-nums ${
                       isTransfer ? "text-text-muted" : isExpense ? "text-text-primary" : "text-success"
                     }`}
                   >
                     {isTransfer ? "" : isExpense ? "-" : "+"}
-                    {formatCurrency(Number(tx.amount))}
+                    {formatCurrency(Number(tx.amount), tx.currency)}
+                    {tx.currency !== "USD" && (
+                      <span className="block text-xs font-normal text-text-muted">
+                        {formatCurrency(Number(tx.amount_usd), "USD")}
+                      </span>
+                    )}
                   </span>
                 </li>
               );

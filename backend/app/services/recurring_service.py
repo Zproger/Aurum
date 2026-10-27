@@ -14,10 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.category import Category
+from app.models.account import Account
 from app.models.enums import CategoryKind, RecurringFrequency, TransactionType
 from app.models.recurring import RecurringTransaction
 from app.models.transaction import Transaction
 from app.schemas.recurring import RecurringTransactionCreate, RecurringTransactionRead, RecurringTransactionUpdate
+from app.services.fx_service import booked_amounts
 
 _EAGER = (
     selectinload(RecurringTransaction.account),
@@ -83,6 +85,7 @@ def _to_read(recurring: RecurringTransaction) -> RecurringTransactionRead:
         transfer_account_name=recurring.transfer_account.name if recurring.transfer_account else None,
         type=recurring.type,
         amount=recurring.amount,
+        currency=recurring.currency,
         description=recurring.description,
         merchant=recurring.merchant,
         notes=recurring.notes,
@@ -115,7 +118,11 @@ async def list_recurring(session: AsyncSession) -> list[RecurringTransactionRead
 
 async def create_recurring(session: AsyncSession, payload: RecurringTransactionCreate) -> RecurringTransactionRead:
     await _ensure_category_matches_type(session, payload.category_id, payload.type)
-    recurring = RecurringTransaction(**payload.model_dump())
+    account = await session.get(Account, payload.account_id)
+    if account is None:
+        raise HTTPException(400, "Account not found")
+    fields = payload.model_dump(exclude={"currency"})
+    recurring = RecurringTransaction(**fields, currency=payload.currency or account.currency)
     session.add(recurring)
     await session.commit()
     return _to_read(await _get_or_404(session, recurring.id))
@@ -126,6 +133,8 @@ async def update_recurring(
 ) -> RecurringTransactionRead:
     recurring = await _get_or_404(session, recurring_id)
     updates = payload.model_dump(exclude_unset=True)
+    if updates.get("currency", "valid") is None:
+        raise HTTPException(400, "Currency is required")
     effective_type = updates.get("type", recurring.type)
     effective_category_id = updates.get("category_id", recurring.category_id)
     await _ensure_category_matches_type(session, effective_category_id, effective_type)
@@ -148,6 +157,16 @@ async def post_recurring(session: AsyncSession, recurring_id: int) -> RecurringT
     last_posted_date forward — the only thing that advances the schedule."""
     recurring = await _get_or_404(session, recurring_id)
     today = date_.today()
+    account = await session.get(Account, recurring.account_id)
+    if account is None:
+        raise HTTPException(400, "Account not found")
+    destination = await session.get(Account, recurring.transfer_account_id) if recurring.transfer_account_id else None
+    if recurring.transfer_account_id and destination is None:
+        raise HTTPException(400, "Transfer account not found")
+    conversion = await booked_amounts(
+        recurring.amount, recurring.currency, account.currency,
+        destination.currency if destination else None, today,
+    )
 
     session.add(
         Transaction(
@@ -156,6 +175,8 @@ async def post_recurring(session: AsyncSession, recurring_id: int) -> RecurringT
             transfer_account_id=recurring.transfer_account_id,
             type=recurring.type,
             amount=recurring.amount,
+            currency=recurring.currency,
+            **conversion,
             description=recurring.description,
             merchant=recurring.merchant,
             notes=recurring.notes,

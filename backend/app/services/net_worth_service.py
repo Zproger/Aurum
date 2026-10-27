@@ -27,6 +27,8 @@ from app.models.account import Account
 from app.models.asset import Asset, AssetValuation
 from app.models.enums import AccountType, AssetClass, CapitalRole, RiskLevel, TransactionType
 from app.models.transaction import Transaction
+from app.services.fx_service import money, rate_to_usd
+from app.services.account_service import _account_balances
 from app.schemas.net_worth import (
     CapitalRoleSummary,
     NetWorthBreakdownItem,
@@ -98,11 +100,12 @@ def _daily_series(events: list[tuple[date_, Decimal]], start: date_, end: date_)
 
 
 async def _cash_cumulative_events(session: AsyncSession) -> list[tuple[date_, Decimal]]:
-    accounts_result = await session.execute(select(Account.id, Account.type))
-    cash_account_ids = {acc_id for acc_id, acc_type in accounts_result.all() if acc_type in CASH_ACCOUNT_TYPES}
+    accounts_result = await session.execute(select(Account.id, Account.type, Account.currency))
+    cash_accounts = {acc_id: currency for acc_id, acc_type, currency in accounts_result.all() if acc_type in CASH_ACCOUNT_TYPES}
+    cash_account_ids = set(cash_accounts)
 
     txns_result = await session.execute(
-        select(Transaction.date, Transaction.type, Transaction.amount, Transaction.account_id, Transaction.transfer_account_id)
+        select(Transaction.date, Transaction.type, Transaction.amount_usd, Transaction.account_id, Transaction.transfer_account_id)
     )
 
     delta_by_date: dict[date_, Decimal] = defaultdict(Decimal)
@@ -122,14 +125,22 @@ async def _cash_cumulative_events(session: AsyncSession) -> list[tuple[date_, De
     for day in sorted(delta_by_date):
         running += delta_by_date[day]
         events.append((day, running))
+    balances = await _account_balances(session)
+    current_cash = Decimal("0")
+    for account_id, currency in cash_accounts.items():
+        balance = balances.get(account_id, Decimal("0"))
+        if balance:
+            current_cash += money(balance * (await rate_to_usd(currency, date_.today())).rate)
+    if events or current_cash:
+        events.append((date_.today(), current_cash))
     return events
 
 
 async def _asset_events_and_class_totals(
     session: AsyncSession,
 ) -> tuple[list[tuple[date_, Decimal]], dict[AssetClass, Decimal], dict[int, Decimal]]:
-    asset_class_result = await session.execute(select(Asset.id, Asset.asset_class))
-    asset_class_map = dict(asset_class_result.all())
+    asset_class_result = await session.execute(select(Asset.id, Asset.asset_class, Asset.currency))
+    asset_meta = {asset_id: (asset_class, currency) for asset_id, asset_class, currency in asset_class_result.all()}
 
     valuations_result = await session.execute(
         select(AssetValuation.asset_id, AssetValuation.as_of_date, AssetValuation.value).order_by(
@@ -139,15 +150,27 @@ async def _asset_events_and_class_totals(
     rows = valuations_result.all()
 
     current_by_asset: dict[int, Decimal] = {}
+    native_by_asset: dict[int, Decimal] = {}
     events: list[tuple[date_, Decimal]] = []
     for day, group in groupby(rows, key=lambda row: row[1]):
         for asset_id, _, value in group:
-            current_by_asset[asset_id] = value
+            native_by_asset[asset_id] = value
+            currency = asset_meta[asset_id][1]
+            rate = (await rate_to_usd(currency, day)).rate
+            current_by_asset[asset_id] = money(value * rate)
         events.append((day, sum(current_by_asset.values(), Decimal("0"))))
+
+    # The latest asset valuation remains the recorded asset value, while its
+    # USD equivalent changes with today's exchange rate.
+    if native_by_asset:
+        for asset_id, value in native_by_asset.items():
+            rate = (await rate_to_usd(asset_meta[asset_id][1], date_.today())).rate
+            current_by_asset[asset_id] = money(value * rate)
+        events.append((date_.today(), sum(current_by_asset.values(), Decimal("0"))))
 
     class_totals: dict[AssetClass, Decimal] = defaultdict(Decimal)
     for asset_id, value in current_by_asset.items():
-        asset_class = asset_class_map.get(asset_id)
+        asset_class = asset_meta.get(asset_id, (None, None))[0]
         if asset_class is not None:
             class_totals[asset_class] += value
 
@@ -159,14 +182,16 @@ async def _capital_role_summary(session: AsyncSession, current_by_asset: dict[in
     neutral / drain) instead of by asset class — always all three roles,
     even at zero, so the block reads as a fixed scale rather than a list
     that shuffles as assets are added."""
-    roles_result = await session.execute(select(Asset.id, Asset.capital_role, Asset.monthly_cash_flow))
+    roles_result = await session.execute(select(Asset.id, Asset.capital_role, Asset.monthly_cash_flow, Asset.currency))
 
     totals_value: dict[CapitalRole, Decimal] = defaultdict(Decimal)
     totals_flow: dict[CapitalRole, Decimal] = defaultdict(Decimal)
     counts: dict[CapitalRole, int] = defaultdict(int)
-    for asset_id, role, cash_flow in roles_result.all():
+    for asset_id, role, cash_flow, currency in roles_result.all():
         totals_value[role] += current_by_asset.get(asset_id, Decimal("0"))
-        totals_flow[role] += cash_flow or Decimal("0")
+        if cash_flow:
+            rate = (await rate_to_usd(currency, date_.today())).rate
+            totals_flow[role] += money(cash_flow * rate)
         counts[role] += 1
 
     return [

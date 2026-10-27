@@ -232,6 +232,14 @@ async def seed_transactions(session, main_account: Account, savings: Account, cr
                 )
             )
 
+    for row in session.new:
+        if isinstance(row, Transaction):
+            row.currency = "USD"
+            row.fx_rate_to_usd = Decimal("1")
+            row.fx_rate_date = row.date
+            row.amount_usd = row.amount
+            row.account_amount = row.amount
+            row.transfer_amount = row.amount if row.type == TransactionType.TRANSFER else None
     await session.commit()
 
 

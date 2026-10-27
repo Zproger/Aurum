@@ -137,7 +137,7 @@ export function parseAmount(raw: string, format: AmountFormat = "auto"): number 
  * date + type + amount (2dp) + description, the same fields the API
  * actually stores, so it works whether the "existing" side comes from a
  * Transaction or the "candidate" side from a freshly parsed CSV row. */
-export function transactionDedupeKey(date: string, type: string, amount: number | string, description: string): string {
+export function transactionDedupeKey(date: string, type: string, amount: number | string, description: string, currency = "USD"): string {
   const normalizedAmount = typeof amount === "number" ? amount : Number(amount);
-  return `${date}|${type}|${normalizedAmount.toFixed(2)}|${description.trim().toLowerCase()}`;
+  return `${date}|${type}|${normalizedAmount.toFixed(2)}|${currency}|${description.trim().toLowerCase()}`;
 }

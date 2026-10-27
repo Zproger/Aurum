@@ -79,18 +79,17 @@ async def seed_default_account(session: AsyncSession) -> None:
 
 
 async def seed_default_app_settings(session: AsyncSession) -> None:
-    """Ensures the singleton app_settings row (id=1) exists, seeded with
-    AURUM_DEFAULT_CURRENCY. The sole place that row gets created — the
-    9f3a2d7c5e11 migration only creates the table now, not the row itself
-    (an earlier version hardcoded the row to 'USD' at migration time, which
-    silently ignored AURUM_DEFAULT_CURRENCY on a fresh install since this
-    function's own get-or-create check would find the row already there).
-    Runs on every app boot (see main.py's lifespan), so it's also
-    self-healing if the row is ever missing (e.g. a DB restored from a
-    pre-currency-setting backup)."""
+    """Keep the singleton reporting currency at USD on every boot.
+
+    The earlier configurable-currency seed remains in Git history; account
+    currency is now independent of the USD reporting denomination.
+    """
     existing = await session.get(AppSettings, 1)
     if existing is not None:
+        if existing.currency != "USD":
+            existing.currency = "USD"
+            await session.commit()
         return
 
-    session.add(AppSettings(id=1, currency=get_settings().default_currency))
+    session.add(AppSettings(id=1, currency="USD"))
     await session.commit()

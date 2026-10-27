@@ -124,7 +124,7 @@ At minimum, change these two before going any further:
 | `AURUM_POSTGRES_PASSWORD` | Password for Aurum's own Postgres container. The template ships with `change-me` on purpose — replace it with something real. |
 | `AURUM_BASIC_AUTH_USER` / `AURUM_BASIC_AUTH_PASSWORD` | **Aurum has no login screen of its own.** Leave these blank and the app has no password at all — fine if it's only reachable from `localhost`, not fine anywhere else. Set both to put an HTTP Basic Auth prompt in front of the whole app. See [Security & Self-Hosting](#-security--self-hosting) below. |
 
-Everything else in `.env` (currency, CORS, the port Aurum listens on) has a sensible default and can be left alone for a first run.
+Everything else in `.env` (the starter account's currency, CORS, the port Aurum listens on) has a sensible default and can be left alone for a first run. Aggregated figures are shown in USD; each account and transaction can use its own currency.
 
 ### 4. Start it
 

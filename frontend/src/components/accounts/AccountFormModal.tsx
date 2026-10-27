@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { Dialog } from "@/components/ui/Dialog";
+import { ApiError } from "@/api/client";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { useCreateAccount, useUpdateAccount } from "@/hooks/useAccounts";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
+import { CURRENCIES, getCurrencyLabel } from "@/lib/currency";
 import type { Account, AccountType } from "@/types";
 
 interface AccountFormModalProps {
@@ -14,10 +16,10 @@ interface AccountFormModalProps {
 
 const ACCOUNT_TYPES: AccountType[] = ["checking", "debit_card", "savings", "credit_card", "cash", "investment", "other"];
 
-const EMPTY_FORM = { name: "", type: "checking" as AccountType };
+const EMPTY_FORM = { name: "", type: "checking" as AccountType, currency: "USD" };
 
 export function AccountFormModal({ open, onClose, account }: AccountFormModalProps) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const createAccount = useCreateAccount();
   const updateAccount = useUpdateAccount();
 
@@ -26,7 +28,7 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
 
   useEffect(() => {
     if (!open) return;
-    setForm(account ? { name: account.name, type: account.type } : EMPTY_FORM);
+    setForm(account ? { name: account.name, type: account.type, currency: account.currency } : EMPTY_FORM);
     setError(null);
   }, [open, account]);
 
@@ -43,8 +45,10 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
         await createAccount.mutateAsync(form);
       }
       onClose();
-    } catch {
-      setError(t("account.form.saveError"));
+    } catch (caught) {
+      setError(caught instanceof ApiError && caught.status === 400
+        ? (language === "ru" ? "Валюту счёта с операциями изменить нельзя. Создайте новый счёт в нужной валюте." : "An account with transactions cannot change currency. Create a new account in the required currency.")
+        : t("account.form.saveError"));
     }
   }
 
@@ -75,6 +79,14 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
               </option>
             ))}
           </Select>
+        </div>
+
+        <div>
+          <Label htmlFor="account-currency">{language === "ru" ? "Валюта счёта" : "Account currency"}</Label>
+          <Select id="account-currency" value={form.currency} onChange={(event) => setForm((prev) => ({ ...prev, currency: event.target.value }))}>
+            {CURRENCIES.map((currency) => <option key={currency.code} value={currency.code}>{getCurrencyLabel(currency.code, language)}</option>)}
+          </Select>
+          {account && <p className="mt-1 text-xs text-text-muted">{language === "ru" ? "После записи операций валюту счёта изменить нельзя." : "Currency cannot be changed once transactions are recorded."}</p>}
         </div>
 
         {error && <p className="text-sm text-danger">{error}</p>}

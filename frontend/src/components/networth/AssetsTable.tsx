@@ -61,15 +61,16 @@ export function AssetsTable({ items, onEdit, onDelete }: AssetsTableProps) {
             </span>
             <span className="shrink-0 text-right">
               <span className="block text-sm font-medium tabular-nums text-text-primary">
-                {formatCurrency(asset.current_value)}
+                {formatCurrency(asset.current_value, asset.currency)}
               </span>
+              {asset.currency !== "USD" && <span className="block text-xs tabular-nums text-text-muted">{formatCurrency(asset.current_value_usd, "USD")}</span>}
               {cashFlow !== null && cashFlow !== 0 && (
                 <span
                   className="block text-xs tabular-nums"
                   style={{ color: cashFlow > 0 ? "var(--success)" : "var(--danger)" }}
                 >
                   {cashFlow > 0 ? "+" : ""}
-                  {formatCurrency(cashFlow)}
+                  {formatCurrency(cashFlow, asset.currency)}
                   {t("common.perMonth")}
                   {annualRoiPercent !== null && ` · ${t("netWorth.assetsTable.annualRoi", { percent: annualRoiPercent.toFixed(1) })}`}
                 </span>

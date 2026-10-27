@@ -23,11 +23,13 @@ import asyncio
 from datetime import date as date_
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from decimal import ROUND_HALF_UP
 from itertools import groupby
 from typing import Literal, NamedTuple
 
 import httpx
 from fastapi import HTTPException
+from app.services.fx_service import rate_to_usd
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -411,6 +413,14 @@ async def refresh_prices(session: AsyncSession, *, force: bool, portfolio_id: in
     )
 
 
+async def _crypto_price_in_usd(price: Decimal, currency: str, on_date: date_) -> tuple[Decimal, Decimal, date_]:
+    quote = await rate_to_usd(currency, on_date)
+    converted = (price * quote.rate).quantize(Decimal("0.000000000000000001"), rounding=ROUND_HALF_UP)
+    if converted <= 0:
+        raise HTTPException(400, "Converted price is below supported precision")
+    return converted, quote.rate, quote.date
+
+
 async def create_holding(session: AsyncSession, payload: CryptoHoldingCreate) -> CryptoHoldingRead:
     settings = await get_or_create_app_settings(session)
 
@@ -453,11 +463,16 @@ async def create_holding(session: AsyncSession, payload: CryptoHoldingCreate) ->
     holding.asset = asset
     session.add(holding)
 
+    usd_price, fx_rate, fx_date = await _crypto_price_in_usd(payload.price_per_unit, payload.price_currency, payload.date)
     holding.transactions.append(
         CryptoTransaction(
             type=CryptoTransactionType.BUY,
             quantity=payload.quantity,
-            price_per_unit=payload.price_per_unit,
+            price_per_unit=usd_price,
+            price_per_unit_original=payload.price_per_unit,
+            price_currency=payload.price_currency,
+            fx_rate_to_usd=fx_rate,
+            fx_rate_date=fx_date,
             date=payload.date,
             note=payload.note,
         )
@@ -513,11 +528,16 @@ async def add_transaction(session: AsyncSession, asset_id: int, payload: CryptoT
         if payload.quantity > current_quantity:
             raise HTTPException(status_code=400, detail="Cannot sell more than you currently hold")
 
+    usd_price, fx_rate, fx_date = await _crypto_price_in_usd(payload.price_per_unit, payload.price_currency, payload.date)
     holding.transactions.append(
         CryptoTransaction(
             type=payload.type,
             quantity=payload.quantity,
-            price_per_unit=payload.price_per_unit,
+            price_per_unit=usd_price,
+            price_per_unit_original=payload.price_per_unit,
+            price_currency=payload.price_currency,
+            fx_rate_to_usd=fx_rate,
+            fx_rate_date=fx_date,
             date=payload.date,
             note=payload.note,
         )
@@ -545,7 +565,7 @@ async def update_transaction(
     asset_id = transaction.asset_id
     holding = await _get_holding_or_404(session, asset_id)
 
-    updates = payload.model_dump(exclude_unset=True)
+    updates = payload.model_dump(exclude_unset=True, exclude={"price_per_unit", "price_currency"})
     effective_type = updates.get("type", transaction.type)
     effective_quantity = updates.get("quantity", transaction.quantity)
 
@@ -560,6 +580,17 @@ async def update_transaction(
 
     for field, value in updates.items():
         setattr(transaction, field, value)
+    if any(field in payload.model_fields_set for field in ("price_per_unit", "price_currency", "date")):
+        original_price = payload.price_per_unit if payload.price_per_unit is not None else transaction.price_per_unit_original
+        currency = payload.price_currency if payload.price_currency is not None else transaction.price_currency
+        if currency is None:
+            raise HTTPException(400, "Currency is required")
+        usd_price, fx_rate, fx_date = await _crypto_price_in_usd(original_price, currency, transaction.date)
+        transaction.price_per_unit = usd_price
+        transaction.price_per_unit_original = original_price
+        transaction.price_currency = currency
+        transaction.fx_rate_to_usd = fx_rate
+        transaction.fx_rate_date = fx_date
     await session.flush()
 
     quantity, _ = _compute_position(holding.transactions)

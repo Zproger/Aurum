@@ -52,6 +52,22 @@ export function fetchTransactionYears() {
   return api.get<number[]>("/transactions/years");
 }
 
+export interface TransactionQuote {
+  fx_rate_to_usd: string;
+  fx_rate_date: string;
+  amount_usd: string;
+  account_amount: string;
+  transfer_amount: string | null;
+}
+
+export function fetchTransactionQuote(input: {
+  amount: string; currency: string; date: string; account_id: number; transfer_account_id?: number;
+}) {
+  return api.get<TransactionQuote>(`/transactions/quote?${new URLSearchParams(
+    Object.entries(input).map(([key, value]) => [key, String(value)])
+  )}`);
+}
+
 export function createTransaction(input: TransactionInput) {
   return api.post<Transaction>("/transactions", input);
 }

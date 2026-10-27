@@ -1,5 +1,5 @@
 from datetime import date as date_
-from decimal import Decimal
+from decimal import Decimal, ROUND_FLOOR
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_session
 from app.core.audit import log_destructive
+from app.models.account import Account
 from app.models.category import Category
 from app.models.enums import CategoryKind, TransactionType
 from app.models.tag import Tag
@@ -24,6 +25,7 @@ from app.schemas.transaction import (
     split_rule_violation,
     transfer_rule_violation,
 )
+from app.services.fx_service import booked_amounts
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -44,6 +46,20 @@ async def _resolve_tags(session: AsyncSession, tag_ids: list[int]) -> list[Tag]:
     if missing:
         raise HTTPException(status_code=400, detail=f"Unknown tag id(s): {sorted(missing)}")
     return tags
+
+
+async def _account_currencies(
+    session: AsyncSession, account_id: int, transfer_account_id: int | None
+) -> tuple[str, str | None]:
+    account = await session.get(Account, account_id)
+    if account is None:
+        raise HTTPException(400, "Account not found")
+    if transfer_account_id is None:
+        return account.currency, None
+    destination = await session.get(Account, transfer_account_id)
+    if destination is None:
+        raise HTTPException(400, "Transfer account not found")
+    return account.currency, destination.currency
 
 _TYPE_TO_CATEGORY_KIND = {
     TransactionType.INCOME: CategoryKind.INCOME,
@@ -98,6 +114,21 @@ async def _build_splits(
             detail="All split categories must be the same parent category or its direct subcategories",
         )
     return [TransactionSplit(category_id=s.category_id, amount=s.amount, note=s.note) for s in splits]
+
+
+def _allocate_split_usd(splits: list[TransactionSplit], original_total: Decimal, usd_total: Decimal) -> None:
+    """Distribute rounded USD cents without losing the parent total."""
+    if not splits:
+        return
+    target_cents = int(usd_total * 100)
+    exact = [Decimal(target_cents) * split.amount / original_total for split in splits]
+    cents = [int(value.to_integral_value(rounding=ROUND_FLOOR)) for value in exact]
+    remainder = target_cents - sum(cents)
+    order = sorted(range(len(splits)), key=lambda index: exact[index] - cents[index], reverse=True)
+    for index in order[:remainder]:
+        cents[index] += 1
+    for split, value in zip(splits, cents, strict=True):
+        split.amount_usd = Decimal(value) / 100
 
 
 @router.get("", response_model=TransactionPage)
@@ -167,9 +198,9 @@ async def list_transactions(
 
     # id as a tiebreaker keeps pagination stable when many rows share a date/amount.
     if sort == "amount_desc":
-        stmt = stmt.order_by(Transaction.amount.desc(), Transaction.id.desc())
+        stmt = stmt.order_by(Transaction.amount_usd.desc(), Transaction.id.desc())
     elif sort == "amount_asc":
-        stmt = stmt.order_by(Transaction.amount.asc(), Transaction.id.desc())
+        stmt = stmt.order_by(Transaction.amount_usd.asc(), Transaction.id.desc())
     else:
         stmt = stmt.order_by(Transaction.date.desc(), Transaction.id.desc())
     stmt = stmt.offset((page - 1) * page_size).limit(page_size)
@@ -193,14 +224,37 @@ async def list_transaction_years(session: AsyncSession = Depends(get_session)) -
     return list(range(min_date.year, max(max_date.year, current_year) + 1))
 
 
+@router.get("/quote")
+async def quote_transaction(
+    amount: Decimal = Query(gt=0),
+    currency: str = Query(pattern=r"^[A-Z]{3}$"),
+    date: date_ = Query(),
+    account_id: int = Query(),
+    transfer_account_id: int | None = Query(default=None),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    account_currency, transfer_currency = await _account_currencies(session, account_id, transfer_account_id)
+    return await booked_amounts(amount, currency, account_currency, transfer_currency, date)
+
+
 @router.post("", response_model=TransactionRead, status_code=201)
 async def create_transaction(payload: TransactionCreate, session: AsyncSession = Depends(get_session)) -> Transaction:
     await _ensure_category_matches_type(session, payload.category_id, payload.type)
-    fields = payload.model_dump(exclude={"tag_ids", "splits"})
-    transaction = Transaction(**fields)
+    account_currency, transfer_currency = await _account_currencies(session, payload.account_id, payload.transfer_account_id)
+    currency = payload.currency or account_currency
+    conversion = await booked_amounts(payload.amount, currency, account_currency, transfer_currency, payload.date)
+    if payload.account_amount is not None:
+        conversion["account_amount"] = payload.account_amount
+    if payload.transfer_amount is not None:
+        if payload.type != TransactionType.TRANSFER:
+            raise HTTPException(400, "transfer_amount is only valid for transfers")
+        conversion["transfer_amount"] = payload.transfer_amount
+    fields = payload.model_dump(exclude={"tag_ids", "splits", "currency", "transfer_amount", "account_amount"})
+    transaction = Transaction(**fields, currency=currency, **conversion)
     transaction.tags = await _resolve_tags(session, payload.tag_ids)
     if payload.splits:
         transaction.splits = await _build_splits(session, payload.splits, payload.type)
+        _allocate_split_usd(transaction.splits, payload.amount, conversion["amount_usd"])
     session.add(transaction)
     await session.commit()
     refreshed = await session.execute(
@@ -221,10 +275,21 @@ async def bulk_create_transactions(
 
     transactions = []
     for item in payload.items:
-        transaction = Transaction(**item.model_dump(exclude={"tag_ids", "splits"}))
+        account_currency, transfer_currency = await _account_currencies(session, item.account_id, item.transfer_account_id)
+        currency = item.currency or account_currency
+        conversion = await booked_amounts(item.amount, currency, account_currency, transfer_currency, item.date)
+        if item.account_amount is not None:
+            conversion["account_amount"] = item.account_amount
+        if item.transfer_amount is not None:
+            if item.type != TransactionType.TRANSFER:
+                raise HTTPException(400, "transfer_amount is only valid for transfers")
+            conversion["transfer_amount"] = item.transfer_amount
+        fields = item.model_dump(exclude={"tag_ids", "splits", "currency", "transfer_amount", "account_amount"})
+        transaction = Transaction(**fields, currency=currency, **conversion)
         transaction.tags = await _resolve_tags(session, item.tag_ids)
         if item.splits:
             transaction.splits = await _build_splits(session, item.splits, item.type)
+            _allocate_split_usd(transaction.splits, item.amount, conversion["amount_usd"])
         transactions.append(transaction)
 
     session.add_all(transactions)
@@ -248,7 +313,7 @@ async def update_transaction(
     )
     if transaction is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    updates = payload.model_dump(exclude_unset=True, exclude={"tag_ids", "splits"})
+    updates = payload.model_dump(exclude_unset=True, exclude={"tag_ids", "splits", "transfer_amount", "account_amount"})
     # Checks run against the row as it would look after the patch, not just
     # the fields sent: switching type alone can invalidate fields left
     # untouched.
@@ -257,6 +322,10 @@ async def update_transaction(
     effective_account_id = updates.get("account_id", transaction.account_id)
     effective_transfer_account_id = updates.get("transfer_account_id", transaction.transfer_account_id)
     effective_amount = updates.get("amount", transaction.amount)
+    effective_date = updates.get("date", transaction.date)
+    effective_currency = updates.get("currency", transaction.currency)
+    if effective_currency is None:
+        raise HTTPException(400, "Currency is required")
     await _ensure_category_matches_type(session, effective_category_id, effective_type)
     violation = transfer_rule_violation(
         type=effective_type,
@@ -290,12 +359,29 @@ async def update_transaction(
     if split_violation:
         raise HTTPException(status_code=400, detail=split_violation)
 
+    if payload.transfer_amount is not None and effective_type != TransactionType.TRANSFER:
+        raise HTTPException(400, "transfer_amount is only valid for transfers")
+
+    account_currency, transfer_currency = await _account_currencies(
+        session, effective_account_id, effective_transfer_account_id
+    )
+    if any(field in updates for field in ("amount", "currency", "date", "account_id", "transfer_account_id", "type")):
+        updates.update(await booked_amounts(
+            effective_amount, effective_currency, account_currency, transfer_currency, effective_date
+        ))
+    if payload.transfer_amount is not None:
+        updates["transfer_amount"] = payload.transfer_amount
+    if payload.account_amount is not None:
+        updates["account_amount"] = payload.account_amount
+
     for field, value in updates.items():
         setattr(transaction, field, value)
     if payload.tag_ids is not None:
         transaction.tags = await _resolve_tags(session, payload.tag_ids)
     if payload.splits is not None:
         transaction.splits = await _build_splits(session, payload.splits, effective_type)
+    if transaction.splits and (payload.splits is not None or any(field in updates for field in ("amount", "currency", "date"))):
+        _allocate_split_usd(transaction.splits, effective_amount, updates.get("amount_usd", transaction.amount_usd))
     await session.commit()
     refreshed = await session.execute(
         select(Transaction).options(*_EAGER).where(Transaction.id == transaction_id)

@@ -125,6 +125,10 @@ class CryptoTransaction(Base, TimestampMixin):
     # currency at the time of the transaction — not re-derived later, since
     # what you actually paid doesn't change with today's market price.
     price_per_unit: Mapped[Numeric] = mapped_column(Numeric(38, 18), nullable=False)
+    price_per_unit_original: Mapped[Numeric] = mapped_column(Numeric(38, 18), nullable=False)
+    price_currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
+    fx_rate_to_usd: Mapped[Numeric] = mapped_column(Numeric(24, 12), nullable=False, default=1)
+    fx_rate_date: Mapped[date_] = mapped_column(Date, nullable=False)
     date: Mapped[date_] = mapped_column(Date, nullable=False)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
 

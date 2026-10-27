@@ -10,6 +10,8 @@ import { useCreateTransaction, useUpdateTransaction } from "@/hooks/useTransacti
 import { useTranslation } from "@/lib/i18n";
 import { buildHierarchicalCategories, translateCategoryName } from "@/lib/categoryLabels";
 import { formatCurrency } from "@/lib/format";
+import { CURRENCIES, getCurrencyLabel } from "@/lib/currency";
+import { fetchTransactionQuote, type TransactionQuote } from "@/api/transactions";
 import type { Tag, Transaction, TransactionInput, TransactionSplitInput, TransactionType } from "@/types";
 
 interface TransactionFormModalProps {
@@ -27,7 +29,10 @@ const EMPTY_FORM = {
   account_id: "",
   category_id: "",
   transfer_account_id: "",
+  transfer_amount: "",
+  account_amount: "",
   amount: "",
+  currency: "USD",
   description: "",
   merchant: "",
   notes: "",
@@ -76,6 +81,8 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
   const [splitMode, setSplitMode] = useState(false);
   const [splitRows, setSplitRows] = useState<SplitRowState[]>([emptySplitRow(), emptySplitRow()]);
   const [error, setError] = useState<string | null>(null);
+  const [quote, setQuote] = useState<TransactionQuote | null>(null);
+  const [quoteError, setQuoteError] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -98,7 +105,10 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
             ? String(transaction.category_id)
             : "",
         transfer_account_id: transaction.transfer_account_id ? String(transaction.transfer_account_id) : "",
+        transfer_amount: "",
+        account_amount: "",
         amount: transaction.amount,
+        currency: transaction.currency,
         description: transaction.description,
         merchant: transaction.merchant ?? "",
         notes: transaction.notes ?? "",
@@ -117,13 +127,37 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
           : [emptySplitRow(), emptySplitRow()]
       );
     } else {
-      setForm({ ...EMPTY_FORM, account_id: accounts?.[0] ? String(accounts[0].id) : "" });
+      setForm({ ...EMPTY_FORM, account_id: accounts?.[0] ? String(accounts[0].id) : "", currency: accounts?.[0]?.currency ?? "USD" });
       setTags([]);
       setSplitMode(false);
       setSplitRows([emptySplitRow(), emptySplitRow()]);
     }
     setError(null);
+    setQuote(null);
   }, [open, transaction, accounts]);
+
+  useEffect(() => {
+    setQuote(null);
+    setQuoteError(false);
+    if (!open || !form.account_id || !form.amount || Number(form.amount) <= 0 || !form.currency || !form.date) {
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      fetchTransactionQuote({
+        amount: form.amount,
+        currency: form.currency,
+        date: form.date,
+        account_id: Number(form.account_id),
+        ...(form.type === "transfer" && form.transfer_account_id ? { transfer_account_id: Number(form.transfer_account_id) } : {}),
+      }).then((result) => {
+        if (!cancelled) { setQuote(result); setQuoteError(false); }
+      }).catch(() => {
+        if (!cancelled) { setQuote(null); setQuoteError(true); }
+      });
+    }, 350);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [open, form.amount, form.currency, form.date, form.account_id, form.transfer_account_id, form.type]);
 
   const kindCategories = (categories ?? []).filter((category) =>
     form.type === "income" ? category.kind === "income" : category.kind === "expense"
@@ -134,6 +168,7 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
   const relevantCategories = buildHierarchicalCategories(kindCategories, language);
 
   const isSaving = createTransaction.isPending || updateTransaction.isPending;
+  const accountCurrency = accounts?.find((account) => String(account.id) === form.account_id)?.currency ?? "USD";
 
   function updateSplitRow(key: string, patch: Partial<SplitRowState>) {
     setSplitRows((prev) => prev.map((row) => (row.key === key ? { ...row, ...patch } : row)));
@@ -239,7 +274,10 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
             ? Number(form.category_id)
             : null,
       transfer_account_id: form.type === "transfer" ? Number(form.transfer_account_id) : null,
+      ...(form.type === "transfer" && form.transfer_amount ? { transfer_amount: form.transfer_amount } : {}),
+      ...(form.account_amount ? { account_amount: form.account_amount } : {}),
       amount: form.amount,
+      currency: form.currency,
       description: form.description,
       merchant: form.merchant || null,
       notes: form.notes || null,
@@ -310,6 +348,21 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
         </div>
 
         <div>
+          <Label htmlFor="currency">{language === "ru" ? "Валюта операции" : "Transaction currency"}</Label>
+          <Select id="currency" value={form.currency} onChange={(event) => setForm((prev) => ({ ...prev, currency: event.target.value, account_amount: "" }))}>
+            {CURRENCIES.map((currency) => <option key={currency.code} value={currency.code}>{getCurrencyLabel(currency.code, language)}</option>)}
+          </Select>
+          {quote && <p className="mt-1 text-xs text-text-muted">
+            {`1 ${form.currency} = ${Number(quote.fx_rate_to_usd).toPrecision(6)} USD · ${formatCurrency(quote.amount_usd, "USD")} · ${quote.fx_rate_date}`}
+            {accounts?.find((account) => String(account.id) === form.account_id)?.currency !== form.currency &&
+              ` · ${formatCurrency(quote.account_amount, accounts?.find((account) => String(account.id) === form.account_id)?.currency ?? "USD")}`}
+            {form.type === "transfer" && quote.transfer_amount &&
+              ` → ${formatCurrency(quote.transfer_amount, accounts?.find((account) => String(account.id) === form.transfer_account_id)?.currency ?? "USD")}`}
+          </p>}
+          {quoteError && <p className="mt-1 text-xs text-danger">{language === "ru" ? "Не удалось получить курс. Попробуйте ещё раз." : "Exchange rate unavailable. Please try again."}</p>}
+        </div>
+
+        <div>
           <Label htmlFor="description">{t("transactions.form.descriptionLabel")}</Label>
           <Input
             id="description"
@@ -326,7 +379,10 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
             id="account"
             required
             value={form.account_id}
-            onChange={(event) => setForm((prev) => ({ ...prev, account_id: event.target.value }))}
+            onChange={(event) => {
+              const account = accounts?.find((item) => String(item.id) === event.target.value);
+              setForm((prev) => ({ ...prev, account_id: event.target.value, currency: account?.currency ?? prev.currency, account_amount: "" }));
+            }}
           >
             <option value="" disabled>
               {t("transactions.form.selectAccount")}
@@ -339,6 +395,14 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
           </Select>
         </div>
 
+        {form.currency !== accountCurrency && <div>
+          <Label htmlFor="account-amount">{language === "ru" ? `Фактически по счёту (${accountCurrency})` : `Actual account amount (${accountCurrency})`}</Label>
+          <Input id="account-amount" type="number" min="0.01" step="0.01" value={form.account_amount}
+            placeholder={quote?.account_amount ?? ""}
+            onChange={(event) => setForm((prev) => ({ ...prev, account_amount: event.target.value }))} />
+          <p className="mt-1 text-xs text-text-muted">{language === "ru" ? "Оставьте пустым для расчёта по курсу. Укажите фактическое списание или зачисление из выписки банка." : "Leave blank for the reference rate, or enter the amount from your bank statement."}</p>
+        </div>}
+
         {form.type === "transfer" ? (
           <div>
             <Label htmlFor="transfer_account">{t("transactions.form.transferAccountLabel")}</Label>
@@ -346,7 +410,7 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
               id="transfer_account"
               required
               value={form.transfer_account_id}
-              onChange={(event) => setForm((prev) => ({ ...prev, transfer_account_id: event.target.value }))}
+              onChange={(event) => setForm((prev) => ({ ...prev, transfer_account_id: event.target.value, transfer_amount: "" }))}
             >
               <option value="" disabled>
                 {t("transactions.form.selectAccount")}
@@ -359,6 +423,13 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
                   </option>
                 ))}
             </Select>
+            <div className="mt-3">
+              <Label htmlFor="transfer-amount">{language === "ru" ? "Получено на счёт назначения" : "Received in destination account"}</Label>
+              <Input id="transfer-amount" type="number" min="0.01" step="0.01" value={form.transfer_amount}
+                placeholder={quote?.transfer_amount ?? ""}
+                onChange={(event) => setForm((prev) => ({ ...prev, transfer_amount: event.target.value }))} />
+              <p className="mt-1 text-xs text-text-muted">{language === "ru" ? "Оставьте пустым для расчёта по курсу. Укажите фактическую сумму, если курс банка отличается." : "Leave blank for the reference rate, or enter the amount actually received."}</p>
+            </div>
           </div>
         ) : (
           <div>
@@ -460,11 +531,11 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
                   <p className={`text-xs ${splitRemainingCents === 0 ? "text-success" : "text-text-muted"}`}>
                     {splitRemainingCents > 0
                       ? t("transactions.form.splitRemainingLabel", {
-                          amount: formatCurrency(splitRemainingCents / 100),
+                          amount: formatCurrency(splitRemainingCents / 100, form.currency),
                         })
                       : splitRemainingCents < 0
                         ? t("transactions.form.splitOverAllocatedLabel", {
-                            amount: formatCurrency(Math.abs(splitRemainingCents) / 100),
+                            amount: formatCurrency(Math.abs(splitRemainingCents) / 100, form.currency),
                           })
                         : t("transactions.form.splitFullyAllocatedLabel")}
                   </p>

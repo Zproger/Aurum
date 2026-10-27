@@ -49,11 +49,11 @@ async def get_category_spending_report(
     # Plain transactions filed directly under one of these categories, plus
     # split lines that assign part of a transaction to one of them — same
     # two sources category_rollup.py unions for the Dashboard/ranking report.
-    plain_stmt = select(Transaction.id, Transaction.date, Transaction.amount).where(
+    plain_stmt = select(Transaction.id, Transaction.date, Transaction.amount_usd).where(
         Transaction.category_id.in_(category_ids)
     )
     split_stmt = (
-        select(TransactionSplit.transaction_id, Transaction.date, TransactionSplit.amount)
+        select(TransactionSplit.transaction_id, Transaction.date, TransactionSplit.amount_usd)
         .join(Transaction, Transaction.id == TransactionSplit.transaction_id)
         .where(TransactionSplit.category_id.in_(category_ids))
     )

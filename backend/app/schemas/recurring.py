@@ -13,6 +13,7 @@ class RecurringTransactionCreate(BaseModel):
     transfer_account_id: int | None = None
     type: TransactionType
     amount: Decimal = Field(gt=0)
+    currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
     description: str = Field(min_length=1, max_length=255)
     merchant: str | None = None
     notes: str | None = Field(default=None, max_length=2000)
@@ -33,6 +34,7 @@ class RecurringTransactionUpdate(BaseModel):
     transfer_account_id: int | None = None
     type: TransactionType | None = None
     amount: Decimal | None = Field(default=None, gt=0)
+    currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
     description: str | None = Field(default=None, min_length=1, max_length=255)
     merchant: str | None = None
     notes: str | None = Field(default=None, max_length=2000)
@@ -58,6 +60,7 @@ class RecurringTransactionRead(BaseModel):
     transfer_account_name: str | None
     type: TransactionType
     amount: Decimal
+    currency: str
     description: str
     merchant: str | None
     notes: str | None

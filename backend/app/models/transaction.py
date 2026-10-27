@@ -26,6 +26,14 @@ class Transaction(Base, TimestampMixin):
     )
     # Always stored positive; `type` carries the sign/direction.
     amount: Mapped[Numeric] = mapped_column(Numeric(14, 2), nullable=False)
+    # Original amount/currency and the immutable conversion used for reports.
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
+    fx_rate_to_usd: Mapped[Numeric] = mapped_column(Numeric(24, 12), nullable=False, default=1)
+    fx_rate_date: Mapped[date_] = mapped_column(Date, nullable=False)
+    amount_usd: Mapped[Numeric] = mapped_column(Numeric(18, 2), nullable=False)
+    # Amounts that moved on the source and destination accounts, respectively.
+    account_amount: Mapped[Numeric] = mapped_column(Numeric(18, 2), nullable=False)
+    transfer_amount: Mapped[Numeric | None] = mapped_column(Numeric(18, 2), nullable=True)
     description: Mapped[str] = mapped_column(String(255), nullable=False)
     merchant: Mapped[str | None] = mapped_column(String(150), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -60,6 +68,7 @@ class TransactionSplit(Base):
     transaction_id: Mapped[int] = mapped_column(ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False)
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"), nullable=True)
     amount: Mapped[Numeric] = mapped_column(Numeric(14, 2), nullable=False)
+    amount_usd: Mapped[Numeric] = mapped_column(Numeric(18, 2), nullable=False)
     note: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     transaction: Mapped["Transaction"] = relationship(back_populates="splits")

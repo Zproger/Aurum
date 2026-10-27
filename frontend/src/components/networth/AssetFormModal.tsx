@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { useAddAssetValuation, useCreateAsset, useUpdateAsset } from "@/hooks/useAssets";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
+import { CURRENCIES, getCurrencyLabel } from "@/lib/currency";
 import type { Asset, AssetClass, CapitalRole, RiskLevel } from "@/types";
 
 interface AssetFormModalProps {
@@ -23,6 +24,7 @@ function todayIso() {
 const EMPTY_FORM = {
   name: "",
   asset_class: "investments" as AssetClass,
+  currency: "USD",
   value: "",
   as_of_date: todayIso(),
   notes: "",
@@ -32,7 +34,7 @@ const EMPTY_FORM = {
 };
 
 export function AssetFormModal({ open, onClose, asset }: AssetFormModalProps) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const createAsset = useCreateAsset();
   const updateAsset = useUpdateAsset();
   const addValuation = useAddAssetValuation();
@@ -46,6 +48,7 @@ export function AssetFormModal({ open, onClose, asset }: AssetFormModalProps) {
       setForm({
         name: asset.name,
         asset_class: asset.asset_class,
+        currency: asset.currency,
         value: asset.current_value,
         as_of_date: todayIso(),
         notes: asset.notes ?? "",
@@ -85,6 +88,7 @@ export function AssetFormModal({ open, onClose, asset }: AssetFormModalProps) {
         await createAsset.mutateAsync({
           name: form.name,
           asset_class: form.asset_class,
+          currency: form.currency,
           value: form.value,
           as_of_date: form.as_of_date,
           notes: form.notes || null,
@@ -153,6 +157,13 @@ export function AssetFormModal({ open, onClose, asset }: AssetFormModalProps) {
               onChange={(event) => setForm((prev) => ({ ...prev, as_of_date: event.target.value }))}
             />
           </div>
+        </div>
+
+        <div>
+          <Label htmlFor="asset-currency">{language === "ru" ? "Валюта актива" : "Asset currency"}</Label>
+          <Select id="asset-currency" value={form.currency} disabled={Boolean(asset)} onChange={(event) => setForm((prev) => ({ ...prev, currency: event.target.value }))}>
+            {CURRENCIES.map((currency) => <option key={currency.code} value={currency.code}>{getCurrencyLabel(currency.code, language)}</option>)}
+          </Select>
         </div>
 
         <div>

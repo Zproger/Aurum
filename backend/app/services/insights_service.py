@@ -27,6 +27,7 @@ from app.services.budget_service import get_budget_status
 from app.services.dashboard_service import get_dashboard_summary
 from app.services.net_worth_service import get_net_worth_summary
 from app.services.settings_service import get_or_create_app_settings
+from app.services.fx_service import rate_to_usd
 
 MAX_LOOKBACK_MONTHS = 24
 
@@ -80,17 +81,13 @@ def _net_worth_decline_streak(summary: NetWorthSummary) -> int:
 
 
 async def _idle_cash_account_count(session: AsyncSession, threshold_amount: Decimal, threshold_days: int) -> int:
-    eligible_ids = set(
-        (
-            await session.execute(
-                select(Account.id).where(
-                    Account.is_archived.is_(False), Account.type.in_(_IDLE_CASH_ACCOUNT_TYPES)
-                )
-            )
+    eligible_rows = (await session.execute(
+        select(Account.id, Account.currency).where(
+            Account.is_archived.is_(False), Account.type.in_(_IDLE_CASH_ACCOUNT_TYPES)
         )
-        .scalars()
-        .all()
-    )
+    )).all()
+    eligible_currencies = dict(eligible_rows)
+    eligible_ids = set(eligible_currencies)
     if not eligible_ids:
         return 0
 
@@ -98,7 +95,7 @@ async def _idle_cash_account_count(session: AsyncSession, threshold_amount: Deci
     # never stored, only ever summed from the full transaction history — plus
     # tracking the most recent date that touched each account along the way.
     rows = await session.execute(
-        select(Transaction.type, Transaction.amount, Transaction.account_id, Transaction.transfer_account_id, Transaction.date)
+        select(Transaction.type, Transaction.account_amount, Transaction.transfer_amount, Transaction.account_id, Transaction.transfer_account_id, Transaction.date)
     )
     balances: dict[int, Decimal] = defaultdict(Decimal)
     last_activity: dict[int, date] = {}
@@ -107,7 +104,7 @@ async def _idle_cash_account_count(session: AsyncSession, threshold_amount: Deci
         if account_id in eligible_ids and (account_id not in last_activity or tx_date > last_activity[account_id]):
             last_activity[account_id] = tx_date
 
-    for tx_type, amount, account_id, transfer_account_id, tx_date in rows.all():
+    for tx_type, amount, transfer_amount, account_id, transfer_account_id, tx_date in rows.all():
         if tx_type == TransactionType.INCOME:
             balances[account_id] += amount
         elif tx_type == TransactionType.EXPENSE:
@@ -115,17 +112,19 @@ async def _idle_cash_account_count(session: AsyncSession, threshold_amount: Deci
         elif tx_type == TransactionType.TRANSFER:
             balances[account_id] -= amount
             if transfer_account_id is not None:
-                balances[transfer_account_id] += amount
+                balances[transfer_account_id] += transfer_amount or amount
         touch(account_id, tx_date)
         touch(transfer_account_id, tx_date)
 
     cutoff = date.today() - timedelta(days=threshold_days)
-    return sum(
-        1
-        for account_id in eligible_ids
-        if balances.get(account_id, Decimal("0")) >= threshold_amount
-        and last_activity.get(account_id, cutoff) <= cutoff
-    )
+    count = 0
+    for account_id in eligible_ids:
+        if last_activity.get(account_id, cutoff) > cutoff:
+            continue
+        rate = (await rate_to_usd(eligible_currencies[account_id], date.today())).rate
+        if balances.get(account_id, Decimal("0")) * rate >= threshold_amount:
+            count += 1
+    return count
 
 
 async def get_financial_alerts(session: AsyncSession) -> AlertsResponse:

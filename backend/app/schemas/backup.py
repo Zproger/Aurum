@@ -59,6 +59,12 @@ class TransactionBackup(BaseModel):
     transfer_account_id: int | None
     type: TransactionType
     amount: Decimal
+    currency: str = "USD"
+    fx_rate_to_usd: Decimal = Decimal("1")
+    fx_rate_date: date_ | None = None
+    amount_usd: Decimal | None = None
+    account_amount: Decimal | None = None
+    transfer_amount: Decimal | None = None
     description: str
     merchant: str | None
     notes: str | None
@@ -77,6 +83,7 @@ class TransactionSplitBackup(BaseModel):
     transaction_id: int
     category_id: int | None
     amount: Decimal
+    amount_usd: Decimal | None = None
     note: str | None
 
 
@@ -150,6 +157,10 @@ class CryptoTransactionBackup(BaseModel):
     type: CryptoTransactionType
     quantity: Decimal
     price_per_unit: Decimal
+    price_per_unit_original: Decimal | None = None
+    price_currency: str = "USD"
+    fx_rate_to_usd: Decimal = Decimal("1")
+    fx_rate_date: date_ | None = None
     date: date_
     note: str | None
 
@@ -190,6 +201,7 @@ class RecurringTransactionBackup(BaseModel):
     transfer_account_id: int | None
     type: TransactionType
     amount: Decimal
+    currency: str = "USD"
     description: str
     merchant: str | None
     notes: str | None

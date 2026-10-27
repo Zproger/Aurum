@@ -37,7 +37,7 @@ def _previous_month(year: int, month: int) -> tuple[int, int]:
 async def _category_expense_totals(session: AsyncSession, year: int, month: int) -> dict[int, Decimal]:
     start, end = _month_bounds(year, month)
     stmt = (
-        select(Transaction.category_id, func.sum(Transaction.amount))
+        select(Transaction.category_id, func.sum(Transaction.amount_usd))
         .where(
             Transaction.type == TransactionType.EXPENSE,
             Transaction.category_id.is_not(None),

@@ -51,11 +51,11 @@ export function AccountList({ items, onEdit, onToggleArchived, onDelete }: Accou
                 {t(`account.type.${account.type}` as TranslationKey)}
               </span>
             </span>
-            <span
-              className="shrink-0 text-sm font-medium tabular-nums"
-              style={{ color: balance < 0 ? "var(--danger)" : "var(--text-primary)" }}
-            >
-              {formatCurrency(balance)}
+            <span className="shrink-0 text-right tabular-nums">
+              <span className="block text-sm font-medium" style={{ color: balance < 0 ? "var(--danger)" : "var(--text-primary)" }}>
+                {formatCurrency(balance, account.currency)}
+              </span>
+              {account.currency !== "USD" && <span className="block text-xs text-text-muted">{formatCurrency(account.balance_usd, "USD")}</span>}
             </span>
             <span className="flex shrink-0 gap-1">
               <button

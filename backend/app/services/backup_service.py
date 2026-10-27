@@ -231,11 +231,21 @@ async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
         # transient object — reassigning it after flush (below) would
         # otherwise trigger an implicit lazy-load, which async SQLAlchemy
         # can't do outside an explicit await (MissingGreenlet).
-        transactions_by_id = {
-            row.id: Transaction(**row.model_dump(exclude={"tag_ids"}), tags=[]) for row in payload.transactions
-        }
+        transactions_by_id = {}
+        for row in payload.transactions:
+            fields = row.model_dump(exclude={"tag_ids"})
+            # Backups written before transaction FX fields existed still
+            # restore with their former USD reporting values intact.
+            fields["fx_rate_date"] = row.fx_rate_date or row.date
+            fields["amount_usd"] = row.amount_usd if row.amount_usd is not None else row.amount
+            fields["account_amount"] = row.account_amount if row.account_amount is not None else row.amount
+            if row.type.value == "transfer" and row.transfer_amount is None:
+                fields["transfer_amount"] = row.amount
+            transactions_by_id[row.id] = Transaction(**fields, tags=[])
         session.add_all(transactions_by_id.values())
-        session.add_all(TransactionSplit(**row.model_dump()) for row in payload.transaction_splits)
+        session.add_all(TransactionSplit(**{
+            **row.model_dump(), "amount_usd": row.amount_usd if row.amount_usd is not None else row.amount
+        }) for row in payload.transaction_splits)
 
         session.add_all(AssetValuation(**row.model_dump()) for row in payload.asset_valuations)
 
@@ -262,7 +272,13 @@ async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
             crypto_holdings.append(holding)
         session.add_all(crypto_holdings)
 
-        session.add_all(CryptoTransaction(**row.model_dump()) for row in payload.crypto_transactions)
+        crypto_transactions = []
+        for row in payload.crypto_transactions:
+            fields = row.model_dump()
+            fields["price_per_unit_original"] = row.price_per_unit_original if row.price_per_unit_original is not None else row.price_per_unit
+            fields["fx_rate_date"] = row.fx_rate_date or row.date
+            crypto_transactions.append(CryptoTransaction(**fields))
+        session.add_all(crypto_transactions)
         session.add_all(Budget(**row.model_dump()) for row in payload.budgets)
         session.add_all(Goal(**row.model_dump()) for row in payload.goals)
         session.add_all(GoalContribution(**row.model_dump()) for row in payload.goal_contributions)
@@ -295,10 +311,12 @@ async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
         # Singleton row — updated in place, not deleted/recreated (no
         # sequence to reset, id is always 1).
         app_settings = await session.get(AppSettings, 1)
+        restored_settings = payload.app_settings.model_dump()
+        restored_settings["currency"] = "USD"
         if app_settings is None:
-            session.add(AppSettings(id=1, **payload.app_settings.model_dump()))
+            session.add(AppSettings(id=1, **restored_settings))
         else:
-            for field, value in payload.app_settings.model_dump().items():
+            for field, value in restored_settings.items():
                 setattr(app_settings, field, value)
 
         await session.commit()

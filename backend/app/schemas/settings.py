@@ -1,4 +1,5 @@
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -27,10 +28,8 @@ class AppSettingsUpdate(BaseModel):
     (`exclude_unset`), same as CategoryUpdate, so a single-field PATCH from
     e.g. CurrencyCard doesn't need to resend the alert thresholds."""
 
-    # ISO 4217 code, e.g. "USD"/"UAH"/"EUR" — the frontend only ever sends
-    # values from its curated currency list, but validate the shape anyway
-    # since Intl.NumberFormat would otherwise silently accept garbage.
-    currency: str | None = Field(default=None, min_length=3, max_length=3, pattern=r"^[A-Z]{3}$")
+    # All aggregated figures are denominated in USD.
+    currency: Literal["USD"] | None = None
     # Consecutive complete months before the corresponding alert fires.
     # Capped at 24 to match insights_service.py's MAX_LOOKBACK_MONTHS.
     negative_cash_flow_threshold_months: int | None = Field(default=None, ge=1, le=24)

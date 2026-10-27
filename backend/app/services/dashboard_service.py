@@ -26,7 +26,7 @@ async def get_dashboard_summary(session: AsyncSession, year: int, month: int) ->
     start, end = _month_bounds(year, month)
 
     totals_stmt = (
-        select(Transaction.type, func.coalesce(func.sum(Transaction.amount), 0))
+        select(Transaction.type, func.coalesce(func.sum(Transaction.amount_usd), 0))
         .where(Transaction.date >= start, Transaction.date <= end)
         .group_by(Transaction.type)
     )

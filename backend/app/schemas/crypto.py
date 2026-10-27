@@ -15,6 +15,7 @@ class CryptoTransactionCreate(BaseModel):
     # currency — not fetched from CoinGecko, this is what the user actually
     # paid, which the market price today has nothing to do with.
     price_per_unit: Decimal = Field(gt=0, max_digits=38, decimal_places=18)
+    price_currency: str = Field(default="USD", pattern=r"^[A-Z]{3}$")
     date: date_
     note: str | None = Field(default=None, max_length=500)
 
@@ -23,6 +24,7 @@ class CryptoTransactionUpdate(BaseModel):
     type: CryptoTransactionType | None = None
     quantity: Decimal | None = Field(default=None, gt=0, max_digits=38, decimal_places=18)
     price_per_unit: Decimal | None = Field(default=None, gt=0, max_digits=38, decimal_places=18)
+    price_currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
     date: date_ | None = None
     note: str | None = Field(default=None, max_length=500)
 
@@ -35,6 +37,10 @@ class CryptoTransactionRead(BaseModel):
     type: CryptoTransactionType
     quantity: Decimal
     price_per_unit: Decimal
+    price_per_unit_original: Decimal
+    price_currency: str
+    fx_rate_to_usd: Decimal
+    fx_rate_date: date_
     date: date_
     note: str | None
 
@@ -70,6 +76,7 @@ class CryptoHoldingCreate(BaseModel):
     # tracking" with a sell.
     quantity: Decimal = Field(gt=0, max_digits=38, decimal_places=18)
     price_per_unit: Decimal = Field(gt=0, max_digits=38, decimal_places=18)
+    price_currency: str = Field(default="USD", pattern=r"^[A-Z]{3}$")
     date: date_ = Field(default_factory=date_.today)
     note: str | None = Field(default=None, max_length=500)
     # Defaults to HIGH — crypto is this app's textbook HIGH example (see

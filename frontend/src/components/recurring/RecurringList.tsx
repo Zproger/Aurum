@@ -65,7 +65,7 @@ export function RecurringList({ items, onPost, onEdit, onDelete, isPosting }: Re
               }`}
             >
               {isTransfer ? "" : isExpense ? "-" : "+"}
-              {formatCurrency(item.amount)}
+              {formatCurrency(item.amount, item.currency)}
             </span>
 
             <span className="flex shrink-0 gap-1">

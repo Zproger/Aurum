@@ -50,7 +50,7 @@ async def get_cash_flow(
             extract("year", Transaction.date).label("year"),
             extract("month", Transaction.date).label("month"),
             Transaction.type,
-            func.sum(Transaction.amount).label("amount"),
+            func.sum(Transaction.amount_usd).label("amount"),
         )
         .where(
             Transaction.type != TransactionType.TRANSFER,

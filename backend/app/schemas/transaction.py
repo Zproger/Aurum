@@ -84,6 +84,7 @@ class TransactionFields(BaseModel):
     transfer_account_id: int | None = None
     type: TransactionType
     amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    currency: str = Field(default="USD", pattern=r"^[A-Z]{3}$")
     description: str = Field(min_length=1, max_length=255)
     merchant: str | None = Field(default=None, max_length=150)
     notes: str | None = Field(default=None, max_length=2000)
@@ -121,6 +122,10 @@ class TransactionSplitInput(BaseModel):
 
 
 class TransactionCreate(TransactionBase):
+    # Omitted by older clients: use the selected account's currency.
+    currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
+    transfer_amount: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=2)
+    account_amount: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=2)
     tag_ids: list[int] = Field(default_factory=list)
     # None/omitted -> a normal single-category transaction, unchanged from
     # before. 2+ entries -> the amount is divided across categories instead
@@ -150,6 +155,9 @@ class TransactionUpdate(BaseModel):
     transfer_account_id: int | None = None
     type: TransactionType | None = None
     amount: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=2)
+    currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
+    transfer_amount: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=2)
+    account_amount: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=2)
     description: str | None = Field(default=None, min_length=1, max_length=255)
     merchant: str | None = Field(default=None, max_length=150)
     notes: str | None = Field(default=None, max_length=2000)
@@ -174,6 +182,7 @@ class TransactionSplitRead(BaseModel):
     category_id: int | None
     category: CategoryRead | None = None
     amount: Decimal
+    amount_usd: Decimal
     note: str | None
 
 
@@ -181,6 +190,11 @@ class TransactionRead(TransactionFields):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    fx_rate_to_usd: Decimal
+    fx_rate_date: date_
+    amount_usd: Decimal
+    account_amount: Decimal
+    transfer_amount: Decimal | None
     account: AccountRead
     category: CategoryRead | None = None
     tags: list[TagRead] = Field(default_factory=list)

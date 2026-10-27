@@ -19,11 +19,13 @@ export interface Account {
 // a silent `undefined` at runtime.
 export interface AccountWithBalance extends Account {
   balance: string;
+  balance_usd: string;
 }
 
 export interface AccountInput {
   name: string;
   type: AccountType;
+  currency: string;
 }
 
 export interface Category {
@@ -72,6 +74,7 @@ export interface TransactionSplit {
   category_id: number | null;
   category: Category | null;
   amount: string;
+  amount_usd: string;
   note: string | null;
 }
 
@@ -88,6 +91,12 @@ export interface Transaction {
   transfer_account_id: number | null;
   type: TransactionType;
   amount: string;
+  currency: string;
+  fx_rate_to_usd: string;
+  fx_rate_date: string;
+  amount_usd: string;
+  account_amount: string;
+  transfer_amount: string | null;
   description: string;
   merchant: string | null;
   notes: string | null;
@@ -111,6 +120,9 @@ export interface TransactionInput {
   transfer_account_id: number | null;
   type: TransactionType;
   amount: string;
+  currency?: string;
+  transfer_amount?: string | null;
+  account_amount?: string | null;
   description: string;
   merchant?: string | null;
   notes?: string | null;
@@ -137,6 +149,7 @@ export interface RecurringTransaction {
   transfer_account_name: string | null;
   type: TransactionType;
   amount: string;
+  currency: string;
   description: string;
   merchant: string | null;
   notes: string | null;
@@ -155,6 +168,7 @@ export interface RecurringTransactionInput {
   transfer_account_id: number | null;
   type: TransactionType;
   amount: string;
+  currency?: string;
   description: string;
   merchant?: string | null;
   frequency: RecurringFrequency;
@@ -208,6 +222,7 @@ export interface Asset {
   monthly_cash_flow: string | null;
   risk_level: RiskLevel;
   current_value: string;
+  current_value_usd: string;
   as_of_date: string;
 }
 
@@ -483,6 +498,7 @@ export interface CryptoHoldingCreateInput {
   // A holding always starts with its first buy.
   quantity: string;
   price_per_unit: string;
+  price_currency?: string;
   date: string;
   note?: string | null;
   // Omit to default to "high" server-side — crypto's own textbook risk
@@ -502,6 +518,10 @@ export interface CryptoTransaction {
   type: CryptoTransactionType;
   quantity: string;
   price_per_unit: string;
+  price_per_unit_original: string;
+  price_currency: string;
+  fx_rate_to_usd: string;
+  fx_rate_date: string;
   date: string;
   note: string | null;
 }
@@ -510,6 +530,7 @@ export interface CryptoTransactionInput {
   type: CryptoTransactionType;
   quantity: string;
   price_per_unit: string;
+  price_currency?: string;
   date: string;
   note?: string | null;
 }

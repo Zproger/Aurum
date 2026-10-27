@@ -13,6 +13,7 @@ from app.api.routes import (
     categories,
     crypto,
     dashboard,
+    fx,
     goals,
     insights,
     net_worth,
@@ -74,6 +75,7 @@ app.include_router(dashboard.router, prefix="/api")
 app.include_router(accounts.router, prefix="/api")
 app.include_router(categories.router, prefix="/api")
 app.include_router(transactions.router, prefix="/api")
+app.include_router(fx.router, prefix="/api")
 app.include_router(assets.router, prefix="/api")
 app.include_router(net_worth.router, prefix="/api")
 app.include_router(backup.router, prefix="/api")

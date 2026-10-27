@@ -7,6 +7,7 @@ import { useCategories } from "@/hooks/useCategories";
 import { useCreateRecurring, useUpdateRecurring } from "@/hooks/useRecurring";
 import { useTranslation } from "@/lib/i18n";
 import { translateCategoryName } from "@/lib/categoryLabels";
+import { CURRENCIES, getCurrencyLabel } from "@/lib/currency";
 import type { RecurringFrequency, RecurringTransaction, TransactionType } from "@/types";
 
 interface RecurringFormModalProps {
@@ -25,6 +26,7 @@ const EMPTY_FORM = {
   category_id: "",
   transfer_account_id: "",
   amount: "",
+  currency: "USD",
   description: "",
   merchant: "",
   frequency: "monthly" as RecurringFrequency,
@@ -32,7 +34,7 @@ const EMPTY_FORM = {
 };
 
 export function RecurringFormModal({ open, onClose, recurring }: RecurringFormModalProps) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const { data: accounts } = useAccounts();
   const { data: categories } = useCategories();
   const createRecurring = useCreateRecurring();
@@ -50,13 +52,14 @@ export function RecurringFormModal({ open, onClose, recurring }: RecurringFormMo
         category_id: recurring.category_id ? String(recurring.category_id) : "",
         transfer_account_id: recurring.transfer_account_id ? String(recurring.transfer_account_id) : "",
         amount: recurring.amount,
+        currency: recurring.currency,
         description: recurring.description,
         merchant: recurring.merchant ?? "",
         frequency: recurring.frequency,
         anchor_date: recurring.anchor_date,
       });
     } else {
-      setForm({ ...EMPTY_FORM, account_id: accounts?.[0] ? String(accounts[0].id) : "" });
+      setForm({ ...EMPTY_FORM, account_id: accounts?.[0] ? String(accounts[0].id) : "", currency: accounts?.[0]?.currency ?? "USD" });
     }
     setError(null);
   }, [open, recurring, accounts]);
@@ -90,6 +93,7 @@ export function RecurringFormModal({ open, onClose, recurring }: RecurringFormMo
       category_id: form.type === "transfer" ? null : form.category_id ? Number(form.category_id) : null,
       transfer_account_id: form.type === "transfer" ? Number(form.transfer_account_id) : null,
       amount: form.amount,
+      currency: form.currency,
       description: form.description,
       merchant: form.merchant || null,
       frequency: form.frequency,
@@ -170,6 +174,13 @@ export function RecurringFormModal({ open, onClose, recurring }: RecurringFormMo
         </div>
 
         <div>
+          <Label htmlFor="recurring-currency">{language === "ru" ? "Валюта операции" : "Transaction currency"}</Label>
+          <Select id="recurring-currency" value={form.currency} onChange={(event) => setForm((prev) => ({ ...prev, currency: event.target.value }))}>
+            {CURRENCIES.map((currency) => <option key={currency.code} value={currency.code}>{getCurrencyLabel(currency.code, language)}</option>)}
+          </Select>
+        </div>
+
+        <div>
           <Label htmlFor="recurring-description">{t("transactions.form.descriptionLabel")}</Label>
           <Input
             id="recurring-description"
@@ -186,7 +197,10 @@ export function RecurringFormModal({ open, onClose, recurring }: RecurringFormMo
             id="recurring-account"
             required
             value={form.account_id}
-            onChange={(event) => setForm((prev) => ({ ...prev, account_id: event.target.value }))}
+            onChange={(event) => {
+              const account = accounts?.find((item) => String(item.id) === event.target.value);
+              setForm((prev) => ({ ...prev, account_id: event.target.value, currency: account?.currency ?? prev.currency }));
+            }}
           >
             <option value="" disabled>
               {t("transactions.form.selectAccount")}

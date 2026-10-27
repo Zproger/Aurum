@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
+from datetime import date
+from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,14 +9,17 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import get_session
 from app.models.asset import Asset, AssetValuation
 from app.schemas.asset import AssetCreate, AssetRead, AssetUpdate, AssetValuationCreate, AssetValuationRead
+from app.services.fx_service import money, rate_to_usd
 
 router = APIRouter(prefix="/assets", tags=["assets"])
 
 _EAGER = (selectinload(Asset.valuations),)
 
 
-def _to_read(asset: Asset) -> AssetRead:
+async def _to_read(asset: Asset) -> AssetRead:
     latest = asset.valuations[-1] if asset.valuations else None
+    value = latest.value if latest else Decimal("0")
+    rate = (await rate_to_usd(asset.currency, date.today())).rate if value else Decimal("1")
     return AssetRead(
         id=asset.id,
         name=asset.name,
@@ -24,7 +29,8 @@ def _to_read(asset: Asset) -> AssetRead:
         capital_role=asset.capital_role,
         monthly_cash_flow=asset.monthly_cash_flow,
         risk_level=asset.risk_level,
-        current_value=latest.value if latest else 0,
+        current_value=value,
+        current_value_usd=money(value * rate),
         as_of_date=latest.as_of_date if latest else asset.created_at.date(),
     )
 
@@ -32,7 +38,7 @@ def _to_read(asset: Asset) -> AssetRead:
 @router.get("", response_model=list[AssetRead])
 async def list_assets(session: AsyncSession = Depends(get_session)) -> list[AssetRead]:
     result = await session.execute(select(Asset).options(*_EAGER).order_by(Asset.name))
-    return [_to_read(asset) for asset in result.scalars().all()]
+    return [await _to_read(asset) for asset in result.scalars().all()]
 
 
 @router.post("", response_model=AssetRead, status_code=201)
@@ -52,7 +58,7 @@ async def create_asset(payload: AssetCreate, session: AsyncSession = Depends(get
     await session.commit()
 
     refreshed = await session.execute(select(Asset).options(*_EAGER).where(Asset.id == asset.id))
-    return _to_read(refreshed.scalar_one())
+    return await _to_read(refreshed.scalar_one())
 
 
 @router.patch("/{asset_id}", response_model=AssetRead)
@@ -61,11 +67,13 @@ async def update_asset(asset_id: int, payload: AssetUpdate, session: AsyncSessio
     asset = result.scalar_one_or_none()
     if asset is None:
         raise HTTPException(status_code=404, detail="Asset not found")
+    if payload.currency is not None and payload.currency != asset.currency and asset.valuations:
+        raise HTTPException(400, "Cannot change the currency of an asset with valuations")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(asset, field, value)
     await session.commit()
     await session.refresh(asset, attribute_names=["valuations"])
-    return _to_read(asset)
+    return await _to_read(asset)
 
 
 @router.post("/{asset_id}/valuations", response_model=AssetRead)
@@ -91,7 +99,7 @@ async def add_asset_valuation(
     await session.commit()
 
     refreshed = await session.execute(select(Asset).options(*_EAGER).where(Asset.id == asset_id))
-    return _to_read(refreshed.scalar_one())
+    return await _to_read(refreshed.scalar_one())
 
 
 @router.get("/{asset_id}/valuations", response_model=list[AssetValuationRead])

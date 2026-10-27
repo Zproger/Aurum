@@ -73,11 +73,11 @@ async def _raw_category_contributions(
     per split line — never both for the same transaction, since a
     transaction is either plain (category_id set, no splits) or split
     (category_id NULL, 2+ splits), enforced at write time."""
-    plain_stmt = select(Transaction.id, Transaction.category_id, Transaction.amount).where(
+    plain_stmt = select(Transaction.id, Transaction.category_id, Transaction.amount_usd).where(
         Transaction.type == transaction_type, Transaction.category_id.is_not(None)
     )
     split_stmt = (
-        select(TransactionSplit.transaction_id, TransactionSplit.category_id, TransactionSplit.amount)
+        select(TransactionSplit.transaction_id, TransactionSplit.category_id, TransactionSplit.amount_usd)
         .join(Transaction, Transaction.id == TransactionSplit.transaction_id)
         .where(Transaction.type == transaction_type, TransactionSplit.category_id.is_not(None))
     )
