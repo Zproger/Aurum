@@ -113,3 +113,13 @@ def test_forwarded_proto_is_trusted_only_by_explicit_cloudflare_opt_in() -> None
     safe_branch = rest.split("  *)", 1)[0]
     assert "$http_" not in safe_branch
     assert "AURUM_TRUSTED_TLS_PROXY=none /docker-entrypoint.d/27-trusted-tls-proxy.sh" in dockerfile
+
+
+def test_csp_allows_the_pdf_worker_but_no_blob_frames() -> None:
+    nginx = (ROOT / "frontend/nginx.conf").read_text(encoding="utf-8")
+    csp = next(line for line in nginx.splitlines() if "Content-Security-Policy" in line)
+
+    # Statement PDFs are drawn by pdf.js in a same-origin worker, not framed.
+    assert "worker-src 'self'" in csp
+    assert "frame-src" not in csp
+    assert "connect-src 'self';" in csp

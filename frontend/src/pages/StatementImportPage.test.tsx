@@ -20,6 +20,15 @@ vi.mock("@/hooks/useAccounts", () => ({
 }));
 
 vi.mock("@/hooks/useCategories", () => ({ useCategories: () => ({ data: [] }) }));
+vi.mock("@/components/statements/PdfPreview", () => ({
+  PdfPreview: ({ file }: { file: File }) => <div data-testid="statement-document" data-file={file.name} />,
+}));
+
+async function screenPdfPreview(container: HTMLElement): Promise<string | null> {
+  // The preview is lazy-loaded; let the dynamic import settle.
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  return container.querySelector('[data-testid="statement-document"]')?.getAttribute("data-file") ?? null;
+}
 
 const row = (overrides: Partial<StatementRow> = {}): StatementRow => ({
   source_row: "page 1, operation 1",
@@ -103,9 +112,10 @@ describe("StatementImportPage document review", () => {
 
     await upload(container, new File(["pdf"], "first.pdf", { type: "application/pdf" }));
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
-    const pdfFrame = container.querySelector<HTMLIFrameElement>('[data-testid="statement-document"]');
-    expect(pdfFrame).not.toBeNull();
-    expect(pdfFrame?.getAttribute("sandbox")).toBe("");
+    // PDFs are drawn by pdf.js (mocked here) from the in-memory File, not framed.
+    expect(await screenPdfPreview(container)).toBe("first.pdf");
+    expect(container.querySelector("iframe")).toBeNull();
+    expect(container.querySelector<HTMLAnchorElement>('a[target="_blank"]')?.href).toContain("blob:local/first.pdf");
 
     await upload(container, new File(["image"], "second.png", { type: "image/png" }));
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:local/first.pdf");

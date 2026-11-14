@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export type LocalStatementDocument = {
   fileName: string;
+  // Kept in memory so PDFs can be rendered from their bytes (no blob: fetch).
+  file: File;
   kind: "pdf" | "image" | "unsupported";
   url: string;
 };
@@ -39,7 +41,7 @@ export function useLocalStatementDocument() {
     if (activeUrl.current) URL.revokeObjectURL(activeUrl.current);
     const url = URL.createObjectURL(file);
     activeUrl.current = url;
-    setDocument({ fileName: file.name, kind: previewKind(file), url });
+    setDocument({ fileName: file.name, file, kind: previewKind(file), url });
   }, []);
 
   useEffect(

@@ -1,5 +1,5 @@
 import { Eye, EyeOff, FileText } from "lucide-react";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Input";
 import type { LocalStatementDocument } from "@/hooks/useLocalStatementDocument";
@@ -10,6 +10,9 @@ import type { Category, StatementPreview, StatementRow, TransactionType } from "
 // A card purchase the bank still holds: already spent, imported by default,
 // but the user decides per row (see backend/app/importers/kaspi.py).
 const BLOCKED_WARNING = "Blocked amount awaiting confirmation; imported as spent";
+
+// pdf.js is large; it is downloaded only when a PDF statement is reviewed.
+const PdfPreview = lazy(() => import("./PdfPreview").then((module) => ({ default: module.PdfPreview })));
 
 const WARNING_KEYS: Record<string, TranslationKey> = {
   "Local OCR was used; review every row before importing": "statementImport.warning.ocrUsed",
@@ -246,14 +249,19 @@ function DocumentPanel({
       {!document ? (
         <p className="p-4 text-sm text-text-muted">{t("statementImport.documentUnavailable")}</p>
       ) : document.kind === "pdf" ? (
-        <iframe
-          className="min-h-[65vh] w-full flex-1 bg-white"
-          data-testid="statement-document"
-          src={document.url}
-          sandbox=""
-          referrerPolicy="no-referrer"
-          title={t("statementImport.documentTitle")}
-        />
+        <>
+          <Suspense fallback={<p className="p-4 text-sm text-text-muted" role="status">{t("common.loading")}</p>}>
+            <PdfPreview file={document.file} />
+          </Suspense>
+          <a
+            className="m-3 inline-flex min-h-11 items-center justify-center rounded-lg border border-border px-4 text-sm font-medium hover:bg-surface-1"
+            href={document.url}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {t("statementImport.openInNewTab")}
+          </a>
+        </>
       ) : document.kind === "image" ? (
         <div className="flex min-h-[360px] flex-1 items-start justify-center overflow-auto p-3">
           <img
