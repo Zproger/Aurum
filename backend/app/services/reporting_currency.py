@@ -165,11 +165,11 @@ class ReportingConverter:
 
 def _unsaved_settings_currency() -> str:
     """The currency a workspace's settings row gets when
-    settings_service.get_or_create_app_settings has to create it (the
-    AppSettings column default). A workspace without a row yet reports in that
-    currency the moment any page creates it, so a read before then must agree."""
-    default = AppSettings.__table__.c.currency.default
-    return str(default.arg) if default is not None else get_settings().default_currency
+    settings_service.get_or_create_app_settings has to create it: the
+    configured AURUM_DEFAULT_CURRENCY (no longer the USD column default). A
+    workspace without a row yet reports in that currency the moment any page
+    creates it, so a read before then must agree."""
+    return get_settings().default_currency.strip().upper() or "KZT"
 
 
 async def reporting_currency_for(session: AsyncSession, workspace_id: UUID | None) -> str:
