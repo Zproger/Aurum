@@ -225,6 +225,25 @@ describe("StatementImportPage document review", () => {
     unmount(root, container);
   });
 
+  it("imports a blocked Kaspi purchase by default and lets the user untick it", async () => {
+    setLanguage("en");
+    vi.mocked(previewStatement).mockResolvedValue(
+      preview({
+        rows: [row({ importable: true, warning: "Blocked amount awaiting confirmation; imported as spent" })],
+      })
+    );
+    const { container, root } = renderPage();
+    await upload(container, new File(["pdf"], "sample.pdf", { type: "application/pdf" }));
+
+    expect(container.textContent).toContain("already left the balance");
+    const checkbox = container.querySelector<HTMLInputElement>('[data-testid="statement-review-cards"] input[type="checkbox"]')!;
+    expect(checkbox.checked).toBe(true);
+    await act(async () => { checkbox.click(); });
+    expect(container.querySelector<HTMLInputElement>('[data-testid="statement-review-cards"] input[type="checkbox"]')!.checked).toBe(false);
+
+    unmount(root, container);
+  });
+
   it("keeps OCR rows excluded until explicit confirmation and imports only after account mapping", async () => {
     setLanguage("en");
     vi.mocked(previewStatement).mockResolvedValue(

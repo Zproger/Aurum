@@ -7,10 +7,15 @@ import { translateCategoryName } from "@/lib/categoryLabels";
 import type { TranslationKey } from "@/lib/i18n";
 import type { Category, StatementPreview, StatementRow, TransactionType } from "@/types";
 
+// A card purchase the bank still holds: already spent, imported by default,
+// but the user decides per row (see backend/app/importers/kaspi.py).
+const BLOCKED_WARNING = "Blocked amount awaiting confirmation; imported as spent";
+
 const WARNING_KEYS: Record<string, TranslationKey> = {
   "Local OCR was used; review every row before importing": "statementImport.warning.ocrUsed",
   "OCR row requires explicit confirmation": "statementImport.warning.ocrConfirm",
   "Blocked amount is not a posted movement": "statementImport.warning.blocked",
+  [BLOCKED_WARNING]: "statementImport.warning.blockedSpent",
   "Pending card amount is not a posted movement": "statementImport.warning.pending",
   "Statement contains pending amounts; they remain visible but are not imported": "statementImport.warning.pendingStatement",
   "Own-account transfer needs the other account and is not imported as income/expense":
@@ -191,7 +196,7 @@ function RowEditor({
       </div>
       <div className={`${fieldClass} text-xs ${row.importable ? "text-success" : "text-warning"}`}>
         <span className={`block font-medium ${labelClass}`}>{t("statementImport.status")}</span>
-        {preview.requires_row_confirmation ? (
+        {preview.requires_row_confirmation || row.warning === BLOCKED_WARNING ? (
           <label className="flex min-h-11 cursor-pointer items-start gap-2 py-2">
             <input
               className="h-5 w-5 shrink-0"

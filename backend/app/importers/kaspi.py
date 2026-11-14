@@ -17,6 +17,11 @@ _AVAILABLE_DATE = re.compile(r"Доступно на (\d{2}\.\d{2}\.\d{2})", re.
 _INCOMING = re.compile(r"^Поступление\s+[сc][оo]\b", re.IGNORECASE)
 _OCR_PENDING_INCOMING = re.compile(r"^S[cс]\s+", re.IGNORECASE)
 _OCR_WARNING = "Local OCR was used; review every row before importing"
+# Kaspi marks a card purchase that is still awaiting the payment system with
+# "- Сумма заблокирована…" under the row. The money has already left the
+# available balance (the statement reconciles with it), so it is imported as
+# spent; the user can still untick it in the preview.
+BLOCKED_WARNING = "Blocked amount awaiting confirmation; imported as spent"
 _OPERATIONS = sorted(
     ("Поступление со своего счета", "Перевод на свой счет", "Пополнение", "Покупка", "Перевод", "Снятие", "Разное"),
     key=len,
@@ -150,10 +155,10 @@ class KaspiPdfImporter(StatementImporter):
             details = details or None
             internal = operation in {"Перевод на свой счет", "Поступление со своего счета"}
             warning = None
-            if pending:
-                warning = "Blocked amount is not a posted movement"
-            elif internal:
+            if internal:
                 warning = "Own-account transfer needs the other account and is not imported as income/expense"
+            elif pending:
+                warning = BLOCKED_WARNING
             purpose = TransactionPurpose.FEE if operation == "Разное" and details and "комис" in details.casefold() else TransactionPurpose.ORDINARY
             rows.append(
                 StatementRow(
@@ -167,7 +172,7 @@ class KaspiPdfImporter(StatementImporter):
                     description=operation,
                     details=details,
                     purpose=purpose,
-                    importable=not pending and not internal,
+                    importable=not internal,
                     warning=warning,
                 )
             )

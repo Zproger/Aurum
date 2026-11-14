@@ -219,7 +219,34 @@ def test_kaspi_text_statement_preserves_fx_purchase_and_reconciles():
     assert fx.currency == "BYN"
     assert fx.amount == Decimal("2918.98")
     assert fx.transaction_amount == Decimal("19.58")
-    assert sum(row.importable for row in preview.rows) == 5
+    # Own-account transfers stay out; the blocked purchase is already spent.
+    assert sum(row.importable for row in preview.rows) == 6
+    blocked = preview.rows[-1]
+    assert blocked.importable is True
+    assert blocked.warning == "Blocked amount awaiting confirmation; imported as spent"
+    assert blocked.details == "Аппарат самообслуживания"
+    assert preview.warnings == ["Balance check passed: opening balance plus operations equals closing balance"]
+
+
+def test_kaspi_blocked_marker_after_the_last_row_does_not_leak_into_details():
+    """Real 2026 layout: the blocked note sits under the final purchase, right
+    before the summary section, and must neither drop the row nor become part
+    of its description."""
+    pages = [
+        "Kaspi Bank\nВЫПИСКА Kaspi Gold\nДоступно на 17.09.26 + 1 000,00 ₸",
+        """Дата Сумма Операция Детали
+17.09.26 - 100,00 ₸   Покупка      Магазин
+17.09.26 - 50,00 ₸   Покупка      Аппарат самообслуживания
+- Сумма заблокирована. Банк ожидает подтверждения от платежной системы.
+Раздел «Краткое содержание операций по карте» содержит информацию об операциях
+Доступно на 18.09.26 + 850,00 ₸""",
+    ]
+
+    preview = KaspiPdfImporter().parse_pages("kaspi.pdf", pages)
+
+    assert [row.importable for row in preview.rows] == [True, True]
+    assert preview.rows[-1].details == "Аппарат самообслуживания"
+    assert preview.rows[-1].warning == "Blocked amount awaiting confirmation; imported as spent"
     assert preview.warnings == ["Balance check passed: opening balance plus operations equals closing balance"]
 
 
@@ -254,7 +281,8 @@ def test_kaspi_ocr_layout_preserves_rows_fx_and_pending_markers():
     preview = KaspiPdfImporter().parse_pages("kaspi-ocr.pdf", _kaspi_ocr_pages())
 
     assert len(preview.rows) == 5
-    assert [row.importable for row in preview.rows] == [False, False, True, True, True]
+    # The © purchase is blocked but spent; the Sc incoming row is an own-account transfer.
+    assert [row.importable for row in preview.rows] == [True, False, True, True, True]
     assert preview.rows[1].description == "Поступление со своего счета"
     assert preview.rows[2].purpose.value == "fee"
     assert preview.rows[3].currency == "USD"
