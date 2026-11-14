@@ -34,8 +34,11 @@ export function PdfPreview({ file }: { file: File }) {
       if (cancelled || !container) return;
       setPageCount(pdf.numPages);
       container.replaceChildren();
-      const width = Math.max(container.clientWidth, 280);
-      const ratio = window.devicePixelRatio || 1;
+      // The panel can be hidden (mobile "Transactions" tab) while this runs, so
+      // render at least 600px wide and let CSS scale it; the pixel ratio is
+      // capped so a long statement does not allocate huge canvases.
+      const width = Math.max(container.clientWidth, 600);
+      const ratio = Math.min(window.devicePixelRatio || 1, 2);
       for (let number = 1; number <= pdf.numPages; number += 1) {
         const page = await pdf.getPage(number);
         if (cancelled) return;
