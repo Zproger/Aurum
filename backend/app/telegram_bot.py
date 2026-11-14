@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+import json
 import logging
 import re
 from uuid import UUID
@@ -21,7 +23,17 @@ from app.models.auth import TelegramIdentity, TelegramTransactionDraft
 from app.models.enums import TransactionType
 from app.models.transaction import Transaction
 from app.models.workspace import User, UserStatus, Workspace, WorkspaceMembership, WorkspaceRole, WorkspaceStatus
+from app.schemas.dashboard import DashboardSummary
+from app.services.dashboard_service import get_dashboard_summary
+from app.services.telegram_sensitive import has_bank_card_number
 from app.services.telegram_service import consume_link_code
+from app.telegram_widget import (
+    SUMMARY_WIDGET_HEIGHT,
+    SUMMARY_WIDGET_HTML,
+    summary_caption,
+    summary_chat_data,
+    summary_text,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -31,6 +43,14 @@ ROLE_LABELS = {
     WorkspaceRole.VIEWER: "только просмотр",
 }
 TRANSACTION_RE = re.compile(r"^([+-])\s*(\d+(?:[.,]\d{1,2})?)\s+(.{1,255})$", re.DOTALL)
+
+
+@dataclass(frozen=True)
+class SummaryUnavailable:
+    """Why /summary cannot be shown: `code` goes to the widget, `text` to the chat."""
+
+    code: str
+    text: str
 
 
 def parse_quick_transaction(text: str) -> tuple[TransactionType, Decimal, str] | None:
@@ -438,14 +458,112 @@ class TelegramBot:
                 "text": answer,
             })
 
+    async def build_summary(self, telegram_user_id: int) -> tuple[DashboardSummary, str] | SummaryUnavailable:
+        """Current-month summary of the linked space, or why it is not available."""
+        async with AsyncSessionLocal() as session:
+            linked = await self.linked_context(session, telegram_user_id)
+            if linked is None:
+                return SummaryUnavailable("unlinked", "Сначала привяжите аккаунт командой /link КОД.")
+            _identity, user, membership, workspace = linked
+            if workspace.status == WorkspaceStatus.BLOCKED:
+                return SummaryUnavailable(
+                    "blocked",
+                    f"Пространство «{workspace.display_name}» заблокировано администратором — "
+                    "выберите другое командой /space.",
+                )
+            today = datetime.now(UTC).date()
+            context = RequestWorkspace(user=user, workspace=workspace, membership=membership)
+            summary = await get_dashboard_summary(session, today.year, today.month, context)
+            return summary, workspace.display_name
+
+    async def send_summary(self, client: httpx.AsyncClient, chat_id: int, telegram_user_id: int) -> None:
+        result = await self.build_summary(telegram_user_id)
+        if isinstance(result, SummaryUnavailable):
+            await self.send(client, chat_id, result.text)
+            return
+        summary, workspace_name = result
+        try:
+            # No public_data and no is_shared: the figures stay in this private
+            # chat, and Telegram protects widget messages from forwarding.
+            await self.api(client, "sendWidget", {
+                "chat_id": chat_id,
+                "html": SUMMARY_WIDGET_HTML,
+                "height": SUMMARY_WIDGET_HEIGHT,
+                "chat_data": summary_chat_data(summary, workspace_name, datetime.now(UTC), self.webapp_url),
+                "caption": summary_caption(summary, workspace_name),
+                "allow_queries": True,
+            })
+        except (httpx.HTTPError, RuntimeError):
+            logger.warning("sendWidget failed; falling back to a text summary")
+            await self.send(client, chat_id, summary_text(summary, workspace_name), open_app=True)
+
+    async def handle_widget_query(self, client: httpx.AsyncClient, query: dict) -> None:
+        """Refresh button inside the summary widget: recompute and replace chat_data."""
+        query_id = query.get("id")
+        sender = query.get("from") or {}
+        chat = query.get("chat") or {}
+        message_id = query.get("message_id")
+        if not isinstance(query_id, str):
+            return
+        answer: dict = {"error": "failed"}
+        if (
+            query.get("data") == "refresh"
+            and isinstance(sender.get("id"), int)
+            and isinstance(chat.get("id"), int)
+            and isinstance(message_id, int)
+        ):
+            try:
+                result = await self.build_summary(sender["id"])
+                if isinstance(result, SummaryUnavailable):
+                    # Re-checked on every tap, so an unlinked user or a blocked
+                    # space gets no figures.
+                    answer = {"error": result.code}
+                else:
+                    summary, workspace_name = result
+                    await self.api(client, "editMessageWidgetData", {
+                        "chat_id": chat["id"],
+                        "message_id": message_id,
+                        "chat_data": summary_chat_data(summary, workspace_name, datetime.now(UTC), self.webapp_url),
+                    })
+                    answer = {"ok": True}
+            except Exception:  # noqa: BLE001 - the query must be answered within 15 s regardless
+                logger.warning("Widget refresh failed")
+        await self.api(client, "answerWidgetQuery", {
+            "widget_query_id": query_id,
+            "data": json.dumps(answer, separators=(",", ":")),
+        })
+
+    async def drop_card_message(self, client: httpx.AsyncClient, chat_id: int, message_id: object) -> None:
+        """Delete a message with a card number and warn without echoing it back."""
+        if isinstance(message_id, int):
+            try:
+                await self.api(client, "deleteMessage", {"chat_id": chat_id, "message_id": message_id})
+            except (httpx.HTTPError, RuntimeError):
+                # Deleting is best effort; the warning below still goes out.
+                logger.warning("Could not delete a Telegram message with a card number")
+        await self.send(
+            client,
+            chat_id,
+            "Похоже, в сообщении номер банковской карты. Я удалил его и ничего не сохранил. "
+            "Не присылайте реквизиты карт в чат.",
+        )
+
     async def handle_message(self, client: httpx.AsyncClient, message: dict) -> None:
         chat = message.get("chat") or {}
         sender = message.get("from") or {}
         text = str(message.get("text") or "").strip()
+        # Photos and documents carry their text in caption/caption_entities.
+        caption = str(message.get("caption") or "")
         if chat.get("type") != "private" or not isinstance(sender.get("id"), int):
             return
         chat_id = chat.get("id")
         if not isinstance(chat_id, int):
+            return
+        # Card numbers must never reach a draft, a transaction or the logs.
+        if has_bank_card_number(text, message.get("entities")) or has_bank_card_number(
+            caption, message.get("caption_entities")
+        ):
+            await self.drop_card_message(client, chat_id, message.get("message_id"))
             return
         if text.lower().startswith("/link "):
             code = text.split(maxsplit=1)[1]
@@ -473,6 +591,9 @@ class TelegramBot:
         if text.lower().split("@", 1)[0] in {"/accounts", "/account"}:
             await self.send_account_picker(client, chat_id, sender["id"])
             return
+        if text.lower().split("@", 1)[0] in {"/summary", "/balance"}:
+            await self.send_summary(client, chat_id, sender["id"])
+            return
         if await self.draft_from_message(client, chat_id, sender["id"], text):
             return
         await self.send(client, chat_id, await self.help_text(sender["id"]), open_app=True)
@@ -480,7 +601,7 @@ class TelegramBot:
     async def help_text(self, telegram_user_id: int) -> str:
         text = (
             "Быстрый ввод: отправьте «-2500 кофе» для расхода или «+500000 зарплата» для дохода.\n"
-            "/space — выбрать пространство, /accounts — выбрать счёт."
+            "/space — выбрать пространство, /accounts — выбрать счёт, /summary — сводка за месяц."
         )
         async with AsyncSessionLocal() as session:
             linked = await self.linked_context(session, telegram_user_id)
@@ -518,6 +639,7 @@ class TelegramBot:
                         await self.api(client, "setMyCommands", {"commands": [
                             {"command": "space", "description": "Выбрать пространство для транзакций"},
                             {"command": "accounts", "description": "Выбрать счёт для транзакций"},
+                            {"command": "summary", "description": "Сводка за месяц"},
                             {"command": "start", "description": "Помощь и запуск Aurum"},
                         ]})
                         if self.webapp_url:
@@ -532,7 +654,11 @@ class TelegramBot:
                     body = await self.api(
                         client,
                         "getUpdates",
-                        {"offset": offset, "timeout": 30, "allowed_updates": ["message", "callback_query"]},
+                        {
+                            "offset": offset,
+                            "timeout": 30,
+                            "allowed_updates": ["message", "callback_query", "widget_query"],
+                        },
                     )
                     for update in body.get("result", []):
                         offset = max(offset, int(update["update_id"]) + 1)
@@ -540,6 +666,8 @@ class TelegramBot:
                             await self.handle_message(client, update["message"])
                         elif "callback_query" in update:
                             await self.handle_callback(client, update["callback_query"])
+                        elif "widget_query" in update:
+                            await self.handle_widget_query(client, update["widget_query"])
                 except (httpx.HTTPError, RuntimeError, KeyError, ValueError):
                     # Never log the exception or request URL: Bot API URLs
                     # contain the token.

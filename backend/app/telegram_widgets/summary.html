@@ -1,0 +1,100 @@
+<style>
+body{margin:0;font:14px/1.35 -apple-system,system-ui,sans-serif;color:var(--t);background:transparent}
+#r{padding:10px 12px;box-sizing:border-box;width:100%}
+h3{margin:0 0 2px;font-size:16px}
+.h{color:var(--h);font-size:12px}
+.b{font-size:22px;font-weight:600;margin:8px 0 6px}
+.g{display:flex;gap:8px;margin-bottom:8px}
+.g div{flex:1;min-width:0}
+.v{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c{display:flex;justify-content:space-between;gap:6px;font-size:13px;margin-top:4px}
+.c span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar{height:4px;border-radius:2px;background:var(--s);margin-top:2px}
+.bar i{display:block;height:4px;border-radius:2px}
+.a{display:flex;gap:8px;margin-top:10px}
+button{flex:1;border:0;border-radius:8px;padding:8px;font:inherit;font-weight:600;background:var(--k);color:var(--kt)}
+button.o{background:var(--s);color:var(--t)}
+</style>
+<div id="r"><p class="h">Загрузка…</p></div>
+<script>
+// All content comes from chatData; the HTML itself can never be replaced.
+var W = window.TelegramWidget;
+var root = document.getElementById('r');
+var busy = false;
+var note = '';
+
+function esc(s) {
+  return String(s == null ? '—' : s).replace(/[&<>"]/g, function (ch) {
+    return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[ch];
+  });
+}
+
+function theme() {
+  var p = (W && W.themeParams) || {};
+  var dark = W && W.colorScheme === 'dark';
+  var st = document.documentElement.style;
+  st.setProperty('--t', p.text_color || (dark ? '#fff' : '#000'));
+  st.setProperty('--h', p.hint_color || (dark ? '#aaa' : '#777'));
+  st.setProperty('--k', p.button_color || '#2481cc');
+  st.setProperty('--kt', p.button_text_color || '#fff');
+  st.setProperty('--s', p.secondary_bg_color || (dark ? '#2c2c2e' : '#efeff4'));
+}
+
+function cell(label, value) {
+  return '<div><div class="h">' + label + '</div><div class="v">' + esc(value) + '</div></div>';
+}
+
+function render() {
+  var d = null;
+  try { d = JSON.parse(W ? W.chatData : ''); } catch (e) {}
+  if (!d) { root.innerHTML = '<p class="h">Нет данных. Отправьте /summary ещё раз.</p>'; return; }
+  var c = ' ' + esc(d.c);
+  var h = '<h3>' + esc(d.m) + '</h3><div class="h">' + esc(d.w) + '</div>';
+  h += '<div class="b">' + esc(d.b) + c + (d.bi ? ' *' : '') + '</div>';
+  h += '<div class="g">' + cell('Доход', d.i) + cell('Расход', d.s) + cell('Итог', d.n) + '</div>';
+  (d.k || []).forEach(function (k) {
+    var color = /^#[0-9a-fA-F]{3,8}$/.test(k[3]) ? k[3] : '#8e8e93';
+    var pct = Math.max(0, Math.min(100, Number(k[2]) || 0));
+    h += '<div class="c"><span>' + esc(k[0]) + '</span><span>' + esc(k[1]) + ' · ' + pct + '%</span></div>';
+    h += '<div class="bar"><i style="width:' + pct + '%;background:' + color + '"></i></div>';
+  });
+  if (d.x || d.bi) h += '<p class="h">* Часть сумм без курса валют — проверьте в Aurum.</p>';
+  var when = new Date((d.t || 0) * 1000);
+  var hm = ('0' + when.getHours()).slice(-2) + ':' + ('0' + when.getMinutes()).slice(-2);
+  h += '<p class="h">' + (note || 'Обновлено в ' + hm) + '</p>';
+  h += '<div class="a"><button id="u">' + (busy ? 'Обновляю…' : 'Обновить') + '</button>';
+  if (d.u) h += '<button class="o" id="o">Открыть Aurum</button>';
+  h += '</div>';
+  root.innerHTML = h;
+  document.getElementById('u').addEventListener('click', refresh);
+  var open = document.getElementById('o');
+  if (open) open.addEventListener('click', function () { W.openLink(d.u); });
+}
+
+function refresh() {
+  if (!W || busy) return;
+  busy = true; note = ''; render();
+  W.request('refresh').then(function (a) {
+    var r = null;
+    try { r = JSON.parse(a.result); } catch (e) {}
+    busy = false;
+    var errors = {unlinked: 'Telegram не привязан к Aurum', blocked: 'Пространство заблокировано'};
+    note = r && r.ok ? '' : ((r && errors[r.error]) || 'Не удалось обновить');
+    render();
+  }, function (e) {
+    busy = false;
+    note = e && e.code === 'RATE_LIMITED' ? 'Слишком часто, подождите' : 'Не удалось обновить';
+    render();
+  });
+}
+
+if (W) {
+  theme();
+  W.onEvent('themeChanged', function () { theme(); render(); });
+  W.onEvent('chatDataChanged', render);
+  render();
+  W.ready();
+} else {
+  root.innerHTML = '<p>Виджет работает только в Telegram.</p>';
+}
+</script>
