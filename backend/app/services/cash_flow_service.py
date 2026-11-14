@@ -10,7 +10,7 @@ from decimal import Decimal
 from sqlalchemy import extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import RequestWorkspace, scope_to_workspace
+from app.api.deps import AccountIds, RequestWorkspace, filter_accounts, scope_to_workspace
 from app.models.enums import TransactionPurpose, TransactionType
 from app.models.account import Account
 from app.models.transaction import Transaction
@@ -24,7 +24,11 @@ def _next_month(year: int, month: int) -> tuple[int, int]:
 
 
 async def get_cash_flow(
-    session: AsyncSession, start_date: date_ | None, end_date: date_ | None, context: RequestWorkspace
+    session: AsyncSession,
+    start_date: date_ | None,
+    end_date: date_ | None,
+    context: RequestWorkspace,
+    account_ids: AccountIds = None,
 ) -> CashFlowResponse:
     bounds_stmt = scope_to_workspace(
         select(func.min(Transaction.date), func.max(Transaction.date)), Transaction, context
@@ -32,6 +36,7 @@ async def get_cash_flow(
         Transaction.type != TransactionType.TRANSFER,
         Transaction.purpose != TransactionPurpose.INVESTMENT_TRADE,
     )
+    bounds_stmt = filter_accounts(bounds_stmt, Transaction.account_id, account_ids)
     if start_date:
         bounds_stmt = bounds_stmt.where(Transaction.date >= start_date)
     if end_date:
@@ -71,6 +76,7 @@ async def get_cash_flow(
         Transaction.date >= effective_start,
         Transaction.date <= effective_end,
     ).group_by("year", "month", Transaction.type)
+    rows_stmt = filter_accounts(rows_stmt, Transaction.account_id, account_ids)
     rows = (await session.execute(rows_stmt)).all()
 
     by_month: dict[tuple[int, int], dict[TransactionType, Decimal]] = defaultdict(dict)

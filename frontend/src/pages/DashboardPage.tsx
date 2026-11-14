@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { AccountFilter, AccountFilterNotice } from "@/components/layout/AccountFilter";
+import { useAccountFilter } from "@/hooks/useAccountFilter";
 import { MonthSelector } from "@/components/layout/MonthSelector";
 import { YearSelector } from "@/components/layout/YearSelector";
 import { StatCard } from "@/components/dashboard/StatCard";
@@ -31,8 +33,9 @@ export function DashboardPage() {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const { data: years } = useTransactionYears();
+  const { accountIds } = useAccountFilter();
 
-  const { data, isLoading, isError, dataUpdatedAt } = useDashboardSummary(year, month);
+  const { data, isLoading, isError, dataUpdatedAt } = useDashboardSummary(year, month, accountIds);
   const displayState = queryDisplayState(data !== undefined, isLoading, isError);
   const unavailable = displayState === "unavailable";
   const pending = displayState === "loading" || unavailable;
@@ -60,11 +63,13 @@ export function DashboardPage() {
               <MonthSelector month={month} onChange={setMonth} />
             </div>
             <YearSelector years={years ?? [now.getFullYear()]} year={year} onChange={setYear} />
+            <AccountFilter />
           </div>
         }
       />
 
       <AlertBanner excludeKeys={["risky_allocation_exceeded"]} />
+      <AccountFilterNotice />
 
       {unavailable && (
         <p className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
@@ -110,7 +115,7 @@ export function DashboardPage() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <SpendingByCategoryCard items={data?.spending_by_category} currency={reportingCurrency} state={displayState} />
-        <RecentTransactionsCard year={year} month={month} />
+        <RecentTransactionsCard year={year} month={month} accountIds={accountIds} />
       </div>
     </Page>
   );

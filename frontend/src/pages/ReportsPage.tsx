@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Label, Select } from "@/components/ui/Input";
+import { AccountFilter, AccountFilterNotice } from "@/components/layout/AccountFilter";
 import { PillSelector } from "@/components/layout/PillSelector";
 import { YearRangeSelector } from "@/components/layout/YearSelector";
 import { CategoryRankingCard } from "@/components/reports/CategoryRankingCard";
 import { CategorySpendingChart } from "@/components/reports/CategorySpendingChart";
 import { TransactionsTable } from "@/components/transactions/TransactionsTable";
 import { TransactionFormModal } from "@/components/transactions/TransactionFormModal";
+import { useAccountFilter } from "@/hooks/useAccountFilter";
 import { useCategories } from "@/hooks/useCategories";
 import { useCategoryRanking, useCategorySpendingReport } from "@/hooks/useReports";
 import { useDeleteTransaction, useTransactions, useTransactionYears } from "@/hooks/useTransactions";
@@ -58,10 +60,12 @@ export function ReportsPage() {
   }, [categories, categoryId]);
 
   const { startDate, endDate } = computeRange(range, customRange);
-  const { data: ranking, isLoading: isRankingLoading, isError: isRankingError } = useCategoryRanking("expense", startDate, endDate);
-  const { data: report, isLoading: isReportLoading, isError: isReportError } = useCategorySpendingReport(categoryId, startDate, endDate);
+  const { accountIds } = useAccountFilter();
+  const { data: ranking, isLoading: isRankingLoading, isError: isRankingError } = useCategoryRanking("expense", startDate, endDate, accountIds);
+  const { data: report, isLoading: isReportLoading, isError: isReportError } = useCategorySpendingReport(categoryId, startDate, endDate, accountIds);
   const { data: transactions, isLoading: isTransactionsLoading, isError: isTransactionsError } = useTransactions({
     category_id: categoryId ?? undefined,
+    account_ids: accountIds,
     start_date: startDate,
     end_date: endDate,
     sort,
@@ -133,6 +137,7 @@ export function ReportsPage() {
           </Select>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
+          <AccountFilter />
           <PillSelector
             options={RANGE_OPTIONS}
             value={range}
@@ -154,6 +159,8 @@ export function ReportsPage() {
           )}
         </div>
       </div>
+
+      <AccountFilterNotice />
 
       <QueryStateNotice
         state={combineStates(reportState, rankingState)}

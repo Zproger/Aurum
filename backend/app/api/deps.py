@@ -4,7 +4,7 @@ from hmac import compare_digest
 from ipaddress import ip_address, ip_network
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Query, Request
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -73,6 +73,28 @@ def scope_to_workspace(statement, model, context: RequestWorkspace):
     if context.workspace_id is None:
         return statement
     return statement.where(model.workspace_id == context.workspace_id)
+
+
+AccountIds = tuple[int, ...] | None
+
+
+def get_account_filter(account_ids: list[int] | None = Query(default=None)) -> AccountIds:
+    """Optional ``?account_ids=1&account_ids=2`` on analytics endpoints.
+
+    ``None`` (parameter absent) means every account, the historical
+    behaviour. The ids are only an extra restriction: workspace scoping still
+    applies, so another workspace's account id can never widen a result.
+    """
+    if not account_ids:
+        return None
+    return tuple(sorted(set(account_ids)))
+
+
+def filter_accounts(statement, account_column, account_ids: AccountIds):
+    """Restrict a statement to the selected accounts, if a selection exists."""
+    if account_ids is None:
+        return statement
+    return statement.where(account_column.in_(account_ids))
 
 
 def get_app_settings(request: Request) -> Settings:

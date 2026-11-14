@@ -9,6 +9,8 @@ export interface TransactionFilters {
   start_date?: string;
   end_date?: string;
   account_id?: number;
+  /** Several accounts at once (the shared analytics account filter). */
+  account_ids?: number[];
   category_id?: number;
   tag_id?: number;
   type?: string;
@@ -21,7 +23,8 @@ export interface TransactionFilters {
 export function fetchTransactions(filters: TransactionFilters = {}) {
   const params = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => {
-    if (value !== undefined && value !== null) params.set(key, String(value));
+    if (Array.isArray(value)) value.forEach((item) => params.append(key, String(item)));
+    else if (value !== undefined && value !== null) params.set(key, String(value));
   });
   return api.get<TransactionPage>(`/transactions?${params.toString()}`);
 }

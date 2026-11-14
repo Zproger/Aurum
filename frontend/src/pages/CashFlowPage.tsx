@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { AccountFilter, AccountFilterNotice } from "@/components/layout/AccountFilter";
+import { useAccountFilter } from "@/hooks/useAccountFilter";
 import { PillSelector } from "@/components/layout/PillSelector";
 import { YearRangeSelector } from "@/components/layout/YearSelector";
 import { CashFlowChart } from "@/components/cashflow/CashFlowChart";
@@ -12,6 +14,7 @@ export function CashFlowPage() {
   const { t } = useTranslation();
   const now = new Date();
   const { data: years } = useTransactionYears();
+  const { accountIds } = useAccountFilter();
   const [range, setRange] = useState<RangePreset>("this_year");
   const [customRange, setCustomRange] = useState<CustomYearRange>({
     fromYear: now.getFullYear(),
@@ -26,12 +29,13 @@ export function CashFlowPage() {
   ];
 
   const { startDate, endDate } = computeRange(range, customRange);
-  const { data: cashFlow, isLoading, isError } = useCashFlow(startDate, endDate);
+  const { data: cashFlow, isLoading, isError } = useCashFlow(startDate, endDate, accountIds);
   const displayState = queryDisplayState(cashFlow !== undefined, isLoading, isError);
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-end gap-2">
+        <AccountFilter />
         <PillSelector options={RANGE_OPTIONS} value={range} onChange={setRange} />
         {range === "custom" && (
           <YearRangeSelector
@@ -48,6 +52,8 @@ export function CashFlowPage() {
           {t("cashFlow.stale")}
         </p>
       )}
+
+      <AccountFilterNotice />
 
       <CashFlowChart cashFlow={cashFlow} state={displayState} />
     </div>

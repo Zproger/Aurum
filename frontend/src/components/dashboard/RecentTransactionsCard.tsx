@@ -11,11 +11,13 @@ import { queryDisplayState } from "@/lib/queryDisplayState";
 interface RecentTransactionsCardProps {
   year: number;
   month: number;
+  /** Shared analytics account filter; undefined means every account. */
+  accountIds?: number[];
 }
 
-export function RecentTransactionsCard({ year, month }: RecentTransactionsCardProps) {
+export function RecentTransactionsCard({ year, month, accountIds }: RecentTransactionsCardProps) {
   const { t } = useTranslation();
-  const { data, isLoading, isError } = useTransactions({ year, month, page: 1, page_size: 6 });
+  const { data, isLoading, isError } = useTransactions({ year, month, page: 1, page_size: 6, account_ids: accountIds });
   const state = queryDisplayState(data !== undefined, isLoading, isError);
   const { data: categories } = useCategories();
 

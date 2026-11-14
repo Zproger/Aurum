@@ -12,7 +12,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import RequestWorkspace, scope_to_workspace
+from app.api.deps import AccountIds, RequestWorkspace, filter_accounts, scope_to_workspace
 from app.models.category import Category
 from app.models.account import Account
 from app.models.enums import CategoryKind, TransactionType
@@ -39,6 +39,7 @@ async def get_category_spending_report(
     start_date: date_ | None,
     end_date: date_ | None,
     context: RequestWorkspace,
+    account_ids: AccountIds = None,
 ) -> CategorySpendingReport:
     category = (
         await session.execute(
@@ -80,6 +81,8 @@ async def get_category_spending_report(
     )
     split_stmt = scope_to_workspace(split_stmt, Transaction, context)
     split_stmt = scope_to_workspace(split_stmt, Account, context)
+    plain_stmt = filter_accounts(plain_stmt, Transaction.account_id, account_ids)
+    split_stmt = filter_accounts(split_stmt, Transaction.account_id, account_ids)
     if start_date:
         plain_stmt = plain_stmt.where(Transaction.date >= start_date)
         split_stmt = split_stmt.where(Transaction.date >= start_date)
@@ -167,6 +170,7 @@ async def get_category_ranking_report(
     start_date: date_ | None,
     end_date: date_ | None,
     context: RequestWorkspace,
+    account_ids: AccountIds = None,
 ) -> CategoryRankingReport:
     """All categories of one kind, ranked by total spent/earned over an
     arbitrary period — "which category costs the most" across the whole
@@ -184,6 +188,7 @@ async def get_category_ranking_report(
         start_date=start_date,
         end_date=end_date,
         context=context,
+        account_ids=account_ids,
     )
     total_amount = sum((row.amount for row in rows), Decimal("0"))
 

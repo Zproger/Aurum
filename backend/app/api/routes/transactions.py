@@ -269,6 +269,8 @@ async def list_transactions(
     start_date: date_ | None = Query(default=None),
     end_date: date_ | None = Query(default=None),
     account_id: int | None = None,
+    # Several accounts at once (the analytics account filter); combines with account_id.
+    account_ids: list[int] | None = Query(default=None),
     category_id: int | None = None,
     tag_id: int | None = None,
     type: TransactionType | None = None,
@@ -300,6 +302,9 @@ async def list_transactions(
     if account_id is not None:
         stmt = stmt.where(Transaction.account_id == account_id)
         count_stmt = count_stmt.where(Transaction.account_id == account_id)
+    if account_ids:
+        stmt = stmt.where(Transaction.account_id.in_(account_ids))
+        count_stmt = count_stmt.where(Transaction.account_id.in_(account_ids))
     if category_id is not None:
         # A split transaction has category_id=NULL on the row itself — the
         # category lives on its split lines instead, so filtering by exact

@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import RequestWorkspace, scope_to_workspace
+from app.api.deps import AccountIds, RequestWorkspace, filter_accounts, scope_to_workspace
 from app.models.enums import TransactionPurpose, TransactionType
 from app.models.account import Account
 from app.models.exchange_rate import ExchangeRate
@@ -80,7 +80,7 @@ async def _rate_to_kzt(session: AsyncSession, as_of: date, currency: str) -> tup
 
 
 async def get_balance_summary(
-    session: AsyncSession, as_of: date, context: RequestWorkspace
+    session: AsyncSession, as_of: date, context: RequestWorkspace, account_ids: AccountIds = None
 ) -> BalanceSummary:
     """Total money across every account, expressed in the app's reporting
     currency.
@@ -97,7 +97,9 @@ async def get_balance_summary(
     reporting_currency = (await get_or_create_app_settings(session, context)).currency.upper()
     balances, _ = await account_balances(session, context)
     accounts = (
-        await session.execute(scope_to_workspace(select(Account), Account, context))
+        await session.execute(
+            filter_accounts(scope_to_workspace(select(Account), Account, context), Account.id, account_ids)
+        )
     ).scalars().all()
 
     by_currency: dict[str, Decimal] = defaultdict(Decimal)
@@ -138,7 +140,7 @@ async def get_balance_summary(
 
 
 async def get_dashboard_summary(
-    session: AsyncSession, year: int, month: int, context: RequestWorkspace
+    session: AsyncSession, year: int, month: int, context: RequestWorkspace, account_ids: AccountIds = None
 ) -> DashboardSummary:
     start, end = _month_bounds(year, month)
 
@@ -154,6 +156,7 @@ async def get_dashboard_summary(
     )
     totals_stmt = scope_to_workspace(totals_stmt, Transaction, context)
     totals_stmt = scope_to_workspace(totals_stmt, Account, context)
+    totals_stmt = filter_accounts(totals_stmt, Transaction.account_id, account_ids)
     totals_result = await session.execute(totals_stmt)
     totals: dict[TransactionType, Decimal] = {row[0]: row[1] for row in totals_result.all()}
 
@@ -171,6 +174,7 @@ async def get_dashboard_summary(
         start_date=start,
         end_date=end,
         context=context,
+        account_ids=account_ids,
     )
 
     top_rows, rest_rows = rows[:MAX_CHART_SLICES], rows[MAX_CHART_SLICES:]
@@ -223,7 +227,7 @@ async def get_dashboard_summary(
     transferred_out_reporting = await _reporting(transferred_out)
 
     # All-time, not month-scoped — the money actually sitting in the accounts.
-    balance = await get_balance_summary(session, date.today(), context)
+    balance = await get_balance_summary(session, date.today(), context, account_ids)
     # get_balance_summary (or the converter) may have cached a freshly fetched
     # official rate; this is a GET, but that write is the same one the
     # /exchange-rates route makes.
