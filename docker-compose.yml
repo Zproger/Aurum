@@ -148,6 +148,10 @@ services:
     security_opt:
       - no-new-privileges:true
     command: ["python", "-m", "app.telegram_bot"]
+    # The bot is not an HTTP server: the image's HEALTHCHECK probes port 8000
+    # and would always report "unhealthy", so it is disabled for this service.
+    healthcheck:
+      disable: true
     environment:
       AURUM_POSTGRES_USER: ${AURUM_POSTGRES_USER:-aurum}
       AURUM_POSTGRES_PASSWORD: ${AURUM_POSTGRES_PASSWORD:-change-me}
