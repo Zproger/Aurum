@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 
 from app.schemas.dashboard import DashboardSummary
+from app.telegram_labels import category_label
 
 SUMMARY_WIDGET_HTML = (Path(__file__).parent / "telegram_widgets" / "summary.html").read_text(encoding="utf-8")
 # Fits the header, three totals, five categories, the note and the buttons.
@@ -66,7 +67,7 @@ def summary_chat_data(
         "t": int(now.timestamp()),
         "k": [
             [
-                item.name[:CATEGORY_NAME_LIMIT],
+                category_label(item.name)[:CATEGORY_NAME_LIMIT],
                 format_amount(item.amount),
                 round(item.percent),
                 item.color if HEX_COLOR_RE.fullmatch(item.color or "") else "",
@@ -108,7 +109,7 @@ def summary_text(summary: DashboardSummary, workspace_name: str) -> str:
     if categories:
         lines.append("")
         lines.extend(
-            f"• {item.name}: {format_amount(item.amount)} {currency} ({round(item.percent)}%)"
+            f"• {category_label(item.name)}: {format_amount(item.amount)} {currency} ({round(item.percent)}%)"
             for item in categories
         )
     if summary.incomplete or summary.balance.incomplete:

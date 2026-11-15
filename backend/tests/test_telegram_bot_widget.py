@@ -28,7 +28,7 @@ class ApiRecorder:
     async def __call__(self, client, method: str, payload: dict) -> dict:
         self.calls.append((method, payload))
         if method == self.fail_method:
-            raise RuntimeError(f"Telegram API method {method} failed")
+            raise telegram_bot.TelegramApiError(method, "Bad Request: test failure")
         return {"ok": True, "result": {}}
 
     @property

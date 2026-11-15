@@ -27,6 +27,7 @@ from app.schemas.dashboard import DashboardSummary
 from app.services.dashboard_service import get_dashboard_summary
 from app.services.telegram_sensitive import has_bank_card_number
 from app.services.telegram_service import consume_link_code
+from app.telegram_labels import workspace_label
 from app.telegram_widget import (
     SUMMARY_WIDGET_HEIGHT,
     SUMMARY_WIDGET_HTML,
@@ -43,6 +44,17 @@ ROLE_LABELS = {
     WorkspaceRole.VIEWER: "только просмотр",
 }
 TRANSACTION_RE = re.compile(r"^([+-])\s*(\d+(?:[.,]\d{1,2})?)\s+(.{1,255})$", re.DOTALL)
+
+
+class TelegramApiError(RuntimeError):
+    """Bot API refused a call. The message holds the method and Telegram's own
+    description ("Bad Request: ..."); it never contains the token or the URL,
+    so it is safe to log."""
+
+    def __init__(self, method: str, description: str) -> None:
+        super().__init__(f"Telegram API method {method} failed: {description[:300]}")
+        self.method = method
+        self.description = description
 
 
 @dataclass(frozen=True)
@@ -84,10 +96,15 @@ class TelegramBot:
 
     async def api(self, client: httpx.AsyncClient, method: str, payload: dict) -> dict:
         response = await client.post(f"{self.base_url}/{method}", json=payload)
-        response.raise_for_status()
-        body = response.json()
-        if not body.get("ok"):
-            raise RuntimeError(f"Telegram API method {method} failed")
+        try:
+            body = response.json()
+        except ValueError:
+            # Not a Bot API answer (proxy error page etc.): report the status only.
+            response.raise_for_status()
+            raise TelegramApiError(method, f"HTTP {response.status_code}, non-JSON body") from None
+        if not isinstance(body, dict) or not body.get("ok"):
+            description = body.get("description") if isinstance(body, dict) else None
+            raise TelegramApiError(method, str(description or f"HTTP {response.status_code}"))
         return body
 
     async def send(self, client: httpx.AsyncClient, chat_id: int, text: str, *, open_app: bool = False) -> None:
@@ -151,7 +168,7 @@ class TelegramBot:
             spaces = await self.memberships(session, identity.user_id)
             current = identity.default_workspace_id
         rows = [[{
-            "text": f"{'✓ ' if workspace.id == current else ''}{workspace.display_name} · {ROLE_LABELS[membership.role]}"[:64],
+            "text": f"{'✓ ' if workspace.id == current else ''}{workspace_label(workspace)} · {ROLE_LABELS[membership.role]}"[:64],
             "callback_data": f"ws:{workspace.id.hex}",
         }] for membership, workspace in spaces]
         await self.api(client, "sendMessage", {
@@ -196,7 +213,7 @@ class TelegramBot:
                 identity.default_account_id = accounts[0].id
             await session.commit()
             account = next((item for item in accounts if item.id == identity.default_account_id), None)
-        answer = f"Пространство: {workspace.display_name}"
+        answer = f"Пространство: {workspace_label(workspace)}"
         if membership.role == WorkspaceRole.VIEWER:
             answer += "\nЗдесь у вас только просмотр — записывать транзакции нельзя."
         elif account is not None:
@@ -235,7 +252,7 @@ class TelegramBot:
             await self.send(
                 client,
                 chat_id,
-                f"В пространстве «{workspace.display_name}» нет активных счетов. Сменить пространство: /space",
+                f"В пространстве «{workspace_label(workspace)}» нет активных счетов. Сменить пространство: /space",
                 open_app=True,
             )
             return
@@ -248,7 +265,7 @@ class TelegramBot:
             }])
         await self.api(client, "sendMessage", {
             "chat_id": chat_id,
-            "text": f"{prompt} в пространстве «{workspace.display_name}»:",
+            "text": f"{prompt} в пространстве «{workspace_label(workspace)}»:",
             "reply_markup": {"inline_keyboard": rows},
         })
 
@@ -267,14 +284,14 @@ class TelegramBot:
                 await self.send(
                     client,
                     chat_id,
-                    f"Пространство «{workspace.display_name}» заблокировано администратором. Выберите другое: /space",
+                    f"Пространство «{workspace_label(workspace)}» заблокировано администратором. Выберите другое: /space",
                 )
                 return True
             if membership.role == WorkspaceRole.VIEWER:
                 await self.send(
                     client,
                     chat_id,
-                    f"В пространстве «{workspace.display_name}» у вас только просмотр. Выберите другое: /space",
+                    f"В пространстве «{workspace_label(workspace)}» у вас только просмотр. Выберите другое: /space",
                 )
                 return True
             accounts = list((
@@ -321,7 +338,7 @@ class TelegramBot:
             "chat_id": chat_id,
             "text": (
                 f"{kind}: {amount} {account.currency}\n{description}\n"
-                f"Пространство: {workspace.display_name}\nСчёт: {account.name}\n\n"
+                f"Пространство: {workspace_label(workspace)}\nСчёт: {account.name}\n\n"
                 "Записать транзакцию? Сменить: /space или /accounts"
             ),
             "reply_markup": {"inline_keyboard": [[
@@ -468,13 +485,13 @@ class TelegramBot:
             if workspace.status == WorkspaceStatus.BLOCKED:
                 return SummaryUnavailable(
                     "blocked",
-                    f"Пространство «{workspace.display_name}» заблокировано администратором — "
+                    f"Пространство «{workspace_label(workspace)}» заблокировано администратором — "
                     "выберите другое командой /space.",
                 )
             today = datetime.now(UTC).date()
             context = RequestWorkspace(user=user, workspace=workspace, membership=membership)
             summary = await get_dashboard_summary(session, today.year, today.month, context)
-            return summary, workspace.display_name
+            return summary, workspace_label(workspace)
 
     async def send_summary(self, client: httpx.AsyncClient, chat_id: int, telegram_user_id: int) -> None:
         result = await self.build_summary(telegram_user_id)
@@ -493,8 +510,12 @@ class TelegramBot:
                 "caption": summary_caption(summary, workspace_name),
                 "allow_queries": True,
             })
-        except (httpx.HTTPError, RuntimeError):
-            logger.warning("sendWidget failed; falling back to a text summary")
+        except TelegramApiError as exc:
+            logger.warning("sendWidget failed, falling back to a text summary: %s", exc)
+            await self.send(client, chat_id, summary_text(summary, workspace_name), open_app=True)
+        except (httpx.HTTPError, RuntimeError) as exc:
+            # httpx errors may carry the request URL with the token: log the type only.
+            logger.warning("sendWidget failed (%s), falling back to a text summary", type(exc).__name__)
             await self.send(client, chat_id, summary_text(summary, workspace_name), open_app=True)
 
     async def handle_widget_query(self, client: httpx.AsyncClient, query: dict) -> None:
@@ -526,8 +547,10 @@ class TelegramBot:
                         "chat_data": summary_chat_data(summary, workspace_name, datetime.now(UTC), self.webapp_url),
                     })
                     answer = {"ok": True}
-            except Exception:  # noqa: BLE001 - the query must be answered within 15 s regardless
-                logger.warning("Widget refresh failed")
+            except TelegramApiError as exc:
+                logger.warning("Widget refresh failed: %s", exc)
+            except Exception as exc:  # noqa: BLE001 - the query must be answered within 15 s regardless
+                logger.warning("Widget refresh failed (%s)", type(exc).__name__)
         await self.api(client, "answerWidgetQuery", {
             "widget_query_id": query_id,
             "data": json.dumps(answer, separators=(",", ":")),
@@ -614,10 +637,10 @@ class TelegramBot:
             account = await session.get(Account, identity.default_account_id) if identity.default_account_id else None
         if workspace.status == WorkspaceStatus.BLOCKED:
             return text + (
-                f"\n\nПространство «{workspace.display_name}» заблокировано администратором — "
+                f"\n\nПространство «{workspace_label(workspace)}» заблокировано администратором — "
                 "выберите другое командой /space."
             )
-        target = f"\n\nСейчас транзакции записываются в пространство «{workspace.display_name}»"
+        target = f"\n\nСейчас транзакции записываются в пространство «{workspace_label(workspace)}»"
         if account is not None and account.workspace_id == workspace.id and not account.is_archived:
             target += f", счёт «{account.name} · {account.currency}»."
         else:
@@ -668,6 +691,10 @@ class TelegramBot:
                             await self.handle_callback(client, update["callback_query"])
                         elif "widget_query" in update:
                             await self.handle_widget_query(client, update["widget_query"])
+                except TelegramApiError as exc:
+                    # Telegram's description is token-free and says what went wrong.
+                    logger.error("Telegram polling failed; retrying: %s", exc)
+                    await asyncio.sleep(5)
                 except (httpx.HTTPError, RuntimeError, KeyError, ValueError):
                     # Never log the exception or request URL: Bot API URLs
                     # contain the token.
