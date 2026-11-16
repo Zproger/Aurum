@@ -50,27 +50,43 @@ function changePercentFor(
   }
 }
 
-function computeTotals(
+/** Aggregates the four stat tiles. Profit/loss is summed only over holdings
+ * the backend could actually price: an unpriced holding still has a real
+ * cost_basis but a null value/profit_loss, and treating that cost as a loss
+ * (the old `totalValue - totalCostBasis`) invented a loss for money that was
+ * never lost — a coin bought before its first successful price sync showed up
+ * as a full write-off. "Total invested" still covers every holding, priced or
+ * not, because that is money actually spent. Exported for unit tests. */
+export function computeTotals(
   holdings: CryptoHolding[],
   range: CryptoRange,
   performance90d: Map<number, number | null> | undefined
 ): Totals {
   let totalValue = 0;
   let totalCostBasis = 0;
+  let pricedCostBasis = 0;
+  let totalProfitLoss = 0;
   let best: Totals["best"] = null;
   let worst: Totals["worst"] = null;
 
   for (const holding of holdings) {
     if (holding.value !== null) totalValue += Number(holding.value);
     if (holding.cost_basis !== null) totalCostBasis += Number(holding.cost_basis);
+    // profit_loss is null exactly when value or cost_basis is null (see
+    // services/crypto_service.py's _to_read), so it defines the priced set.
+    if (holding.profit_loss !== null) {
+      totalProfitLoss += Number(holding.profit_loss);
+      if (holding.cost_basis !== null) pricedCostBasis += Number(holding.cost_basis);
+    }
     const percent = changePercentFor(holding, range, performance90d);
     if (percent === null) continue;
     if (best === null || percent > best.percent) best = { holding, percent };
     if (worst === null || percent < worst.percent) worst = { holding, percent };
   }
 
-  const totalProfitLoss = totalValue - totalCostBasis;
-  const totalProfitLossPercent = totalCostBasis > 0 ? (totalProfitLoss / totalCostBasis) * 100 : null;
+  // Same base as the profit above, not every holding's cost: a percentage
+  // mixing a priced gain with an unpriced position's cost is not a return.
+  const totalProfitLossPercent = pricedCostBasis > 0 ? (totalProfitLoss / pricedCostBasis) * 100 : null;
 
   return { totalValue, totalCostBasis, totalProfitLoss, totalProfitLossPercent, best, worst };
 }
