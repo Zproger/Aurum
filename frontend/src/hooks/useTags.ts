@@ -20,6 +20,8 @@ export function useDeleteTag() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tags"] });
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["tag-ranking"] });
+      queryClient.invalidateQueries({ queryKey: ["tag-spending-report"] });
     },
   });
 }

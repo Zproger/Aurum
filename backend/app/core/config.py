@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # it in Settings; it deliberately does NOT ride on the unauthenticated
 # /api/health), and embedded in exported backups so an old file can be told
 # apart from a current one.
-APP_VERSION = "1.1.8"
+APP_VERSION = "1.1.9"
 
 
 class Settings(BaseSettings):
