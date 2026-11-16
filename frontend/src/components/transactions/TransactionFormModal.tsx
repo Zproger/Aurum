@@ -9,7 +9,7 @@ import { useCategories } from "@/hooks/useCategories";
 import { useCreateTransaction, useUpdateTransaction } from "@/hooks/useTransactions";
 import { useTranslation } from "@/lib/i18n";
 import { buildHierarchicalCategories, translateCategoryName } from "@/lib/categoryLabels";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, todayIso } from "@/lib/format";
 import type { Tag, Transaction, TransactionInput, TransactionSplitInput, TransactionType } from "@/types";
 
 interface TransactionFormModalProps {
@@ -18,21 +18,22 @@ interface TransactionFormModalProps {
   transaction?: Transaction | null;
 }
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+// A factory, not a module-level constant: the date has to be "today" when the
+// dialog opens, not whenever this module happened to load. A tab left open
+// overnight used to pre-fill the new form with yesterday.
+function emptyForm() {
+  return {
+    type: "expense" as TransactionType,
+    account_id: "",
+    category_id: "",
+    transfer_account_id: "",
+    amount: "",
+    description: "",
+    merchant: "",
+    notes: "",
+    date: todayIso(),
+  };
 }
-
-const EMPTY_FORM = {
-  type: "expense" as TransactionType,
-  account_id: "",
-  category_id: "",
-  transfer_account_id: "",
-  amount: "",
-  description: "",
-  merchant: "",
-  notes: "",
-  date: todayIso(),
-};
 
 interface SplitRowState {
   key: string;
@@ -71,7 +72,7 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
   const createTransaction = useCreateTransaction();
   const updateTransaction = useUpdateTransaction();
 
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm] = useState(emptyForm);
   const [tags, setTags] = useState<Tag[]>([]);
   const [splitMode, setSplitMode] = useState(false);
   const [splitRows, setSplitRows] = useState<SplitRowState[]>([emptySplitRow(), emptySplitRow()]);
@@ -117,7 +118,7 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
           : [emptySplitRow(), emptySplitRow()]
       );
     } else {
-      setForm({ ...EMPTY_FORM, account_id: accounts?.[0] ? String(accounts[0].id) : "" });
+      setForm({ ...emptyForm(), account_id: accounts?.[0] ? String(accounts[0].id) : "" });
       setTags([]);
       setSplitMode(false);
       setSplitRows([emptySplitRow(), emptySplitRow()]);

@@ -3,6 +3,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { useAddAssetValuation, useCreateAsset, useUpdateAsset } from "@/hooks/useAssets";
+import { todayIso } from "@/lib/format";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Asset, AssetClass, CapitalRole, RiskLevel } from "@/types";
 
@@ -16,20 +17,18 @@ const ASSET_CLASSES: AssetClass[] = ["investments", "crypto", "real_estate", "ve
 const CAPITAL_ROLES: CapitalRole[] = ["income", "neutral", "drain"];
 const RISK_LEVELS: RiskLevel[] = ["low", "medium", "high"];
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+function emptyForm() {
+  return {
+    name: "",
+    asset_class: "investments" as AssetClass,
+    value: "",
+    as_of_date: todayIso(),
+    notes: "",
+    capital_role: "neutral" as CapitalRole,
+    monthly_cash_flow: "",
+    risk_level: "medium" as RiskLevel,
+  };
 }
-
-const EMPTY_FORM = {
-  name: "",
-  asset_class: "investments" as AssetClass,
-  value: "",
-  as_of_date: todayIso(),
-  notes: "",
-  capital_role: "neutral" as CapitalRole,
-  monthly_cash_flow: "",
-  risk_level: "medium" as RiskLevel,
-};
 
 export function AssetFormModal({ open, onClose, asset }: AssetFormModalProps) {
   const { t } = useTranslation();
@@ -37,7 +36,7 @@ export function AssetFormModal({ open, onClose, asset }: AssetFormModalProps) {
   const updateAsset = useUpdateAsset();
   const addValuation = useAddAssetValuation();
 
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -54,7 +53,7 @@ export function AssetFormModal({ open, onClose, asset }: AssetFormModalProps) {
         risk_level: asset.risk_level,
       });
     } else {
-      setForm(EMPTY_FORM);
+      setForm(emptyForm());
     }
     setError(null);
   }, [open, asset]);

@@ -1,3 +1,5 @@
+import { toIsoDate } from "@/lib/format";
+
 /** Shared by CashFlowPage and ReportsPage — both offer the same four
  * period presets over their respective date-ranged endpoints. */
 export type RangePreset = "all" | "this_year" | "5y" | "custom";
@@ -5,10 +7,6 @@ export type RangePreset = "all" | "this_year" | "5y" | "custom";
 export interface CustomYearRange {
   fromYear: number;
   toYear: number;
-}
-
-function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
 }
 
 export function computeRange(
@@ -20,10 +18,10 @@ export function computeRange(
     case "all":
       return {};
     case "this_year":
-      return { startDate: `${today.getFullYear()}-01-01`, endDate: isoDate(today) };
+      return { startDate: `${today.getFullYear()}-01-01`, endDate: toIsoDate(today) };
     case "5y": {
       const start = new Date(today.getFullYear() - 5, today.getMonth(), 1);
-      return { startDate: isoDate(start), endDate: isoDate(today) };
+      return { startDate: toIsoDate(start), endDate: toIsoDate(today) };
     }
     case "custom": {
       if (!custom) return {};

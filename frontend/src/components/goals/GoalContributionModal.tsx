@@ -3,6 +3,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
 import { useAddGoalContribution } from "@/hooks/useGoals";
+import { todayIso } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { Goal } from "@/types";
 
@@ -10,10 +11,6 @@ interface GoalContributionModalProps {
   open: boolean;
   onClose: () => void;
   goal: Goal | null;
-}
-
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
 }
 
 export function GoalContributionModal({ open, onClose, goal }: GoalContributionModalProps) {

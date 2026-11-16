@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { useCreateCryptoHolding, useCryptoHoldings, useCryptoPortfolios } from "@/hooks/useCrypto";
+import { todayIso } from "@/lib/format";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { CryptoSearchResult, RiskLevel } from "@/types";
 
@@ -42,7 +43,7 @@ export function CryptoAddModal({ open, onClose, defaultPortfolioId }: CryptoAddM
   const [portfolioId, setPortfolioId] = useState<number | null>(null);
   const [quantity, setQuantity] = useState("");
   const [pricePerUnit, setPricePerUnit] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(todayIso);
   // Defaults to "high", same as the backend default — crypto is this app's
   // own textbook HIGH risk example — but overridable per coin here.
   const [riskLevel, setRiskLevel] = useState<RiskLevel>("high");
@@ -56,7 +57,7 @@ export function CryptoAddModal({ open, onClose, defaultPortfolioId }: CryptoAddM
     setSelected(null);
     setQuantity("");
     setPricePerUnit("");
-    setDate(new Date().toISOString().slice(0, 10));
+    setDate(todayIso());
     setRiskLevel("high");
     setNetwork("");
     setSearchError(null);
