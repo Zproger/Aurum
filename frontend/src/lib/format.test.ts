@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setLanguage } from "@/lib/i18n";
 import {
   formatCryptoAmount,
@@ -9,6 +9,7 @@ import {
   getMonthLabels,
   maskAmount,
   pluralizeRu,
+  toIsoDate,
   trimTrailingZeros,
 } from "@/lib/format";
 
@@ -151,5 +152,27 @@ describe("pluralizeRu", () => {
     expect(pluralizeRu(5, "актив", "актива", "активов")).toBe("активов");
     expect(pluralizeRu(11, "актив", "актива", "активов")).toBe("активов");
     expect(pluralizeRu(14, "актив", "актива", "активов")).toBe("активов");
+  });
+});
+
+describe("toIsoDate", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("reads the local calendar date, not the UTC date", () => {
+    // 00:30 on Jan 1 in UTC+5:30 is still Dec 31 in UTC. A transaction added
+    // then used to be dated a day early.
+    vi.stubEnv("TZ", "Asia/Kolkata");
+    expect(toIsoDate(new Date("2026-01-01T00:30:00+05:30"))).toBe("2026-01-01");
+
+    // The other direction: 20:30 on Dec 31 in UTC-5 is already Jan 1 in UTC.
+    vi.stubEnv("TZ", "America/New_York");
+    expect(toIsoDate(new Date("2025-12-31T20:30:00-05:00"))).toBe("2025-12-31");
+  });
+
+  it("zero-pads the month and day", () => {
+    vi.stubEnv("TZ", "UTC");
+    expect(toIsoDate(new Date(2026, 0, 5))).toBe("2026-01-05");
   });
 });

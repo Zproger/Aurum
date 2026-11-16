@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Input, Label } from "@/components/ui/Input";
 import { useAddCryptoTransaction, useUpdateCryptoTransaction } from "@/hooks/useCrypto";
-import { trimTrailingZeros } from "@/lib/format";
+import { todayIso, trimTrailingZeros } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { CryptoHolding, CryptoTransaction, CryptoTransactionType } from "@/types";
@@ -32,7 +32,7 @@ export function CryptoTransactionModal({ open, onClose, holding, transaction = n
   const [type, setType] = useState<CryptoTransactionType>("buy");
   const [quantity, setQuantity] = useState("");
   const [pricePerUnit, setPricePerUnit] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(todayIso);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -51,7 +51,7 @@ export function CryptoTransactionModal({ open, onClose, holding, transaction = n
       setType("buy");
       setQuantity("");
       setPricePerUnit("");
-      setDate(new Date().toISOString().slice(0, 10));
+      setDate(todayIso());
       setNote("");
     }
     setError(null);

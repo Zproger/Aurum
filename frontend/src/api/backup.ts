@@ -1,5 +1,6 @@
 import { api } from "@/api/client";
 import { getAuthHeader } from "@/lib/auth";
+import { todayIso } from "@/lib/format";
 import { t } from "@/lib/i18n";
 
 export async function exportBackup(): Promise<void> {
@@ -15,7 +16,7 @@ export async function exportBackup(): Promise<void> {
   }
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
-  const date = new Date().toISOString().slice(0, 10);
+  const date = todayIso();
 
   const link = document.createElement("a");
   link.href = url;

@@ -6,6 +6,7 @@ import { useAccounts } from "@/hooks/useAccounts";
 import { useCategories } from "@/hooks/useCategories";
 import { useCreateRecurring, useUpdateRecurring } from "@/hooks/useRecurring";
 import { useTranslation } from "@/lib/i18n";
+import { todayIso } from "@/lib/format";
 import { translateCategoryName } from "@/lib/categoryLabels";
 import type { RecurringFrequency, RecurringTransaction, TransactionType } from "@/types";
 
@@ -15,21 +16,19 @@ interface RecurringFormModalProps {
   recurring?: RecurringTransaction | null;
 }
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+function emptyForm() {
+  return {
+    type: "expense" as TransactionType,
+    account_id: "",
+    category_id: "",
+    transfer_account_id: "",
+    amount: "",
+    description: "",
+    merchant: "",
+    frequency: "monthly" as RecurringFrequency,
+    anchor_date: todayIso(),
+  };
 }
-
-const EMPTY_FORM = {
-  type: "expense" as TransactionType,
-  account_id: "",
-  category_id: "",
-  transfer_account_id: "",
-  amount: "",
-  description: "",
-  merchant: "",
-  frequency: "monthly" as RecurringFrequency,
-  anchor_date: todayIso(),
-};
 
 export function RecurringFormModal({ open, onClose, recurring }: RecurringFormModalProps) {
   const { t } = useTranslation();
@@ -38,7 +37,7 @@ export function RecurringFormModal({ open, onClose, recurring }: RecurringFormMo
   const createRecurring = useCreateRecurring();
   const updateRecurring = useUpdateRecurring();
 
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -56,7 +55,7 @@ export function RecurringFormModal({ open, onClose, recurring }: RecurringFormMo
         anchor_date: recurring.anchor_date,
       });
     } else {
-      setForm({ ...EMPTY_FORM, account_id: accounts?.[0] ? String(accounts[0].id) : "" });
+      setForm({ ...emptyForm(), account_id: accounts?.[0] ? String(accounts[0].id) : "" });
     }
     setError(null);
   }, [open, recurring, accounts]);

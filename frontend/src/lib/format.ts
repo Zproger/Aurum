@@ -103,6 +103,27 @@ export function formatTransactionDate(isoDate: string, includeYear = false): str
   }).format(date);
 }
 
+/** Local calendar date as "YYYY-MM-DD" — the shape every <input type="date">
+ * and API date field uses. Deliberately reads the local getters instead of
+ * `toISOString().slice(0, 10)`: that is the *UTC* date, which is still
+ * yesterday for everyone east of UTC between local midnight and UTC midnight.
+ * A transaction added at 00:30 in UTC+5 was dated a day early, and "this
+ * year" reports asked the API for an end date before their start date on
+ * Jan 1. */
+export function toIsoDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/** Today's local calendar date — see toIsoDate(). Call this at the moment the
+ * value is needed, not at module load: a tab left open overnight must still
+ * pre-fill the new transaction form with the new day. */
+export function todayIso(): string {
+  return toIsoDate(new Date());
+}
+
 /** Russian noun pluralization: pick the right form for 1/2-4/5+ (with the
  * 11-14 exception), e.g. pluralizeRu(3, "актив", "актива", "активов"). */
 export function pluralizeRu(count: number, one: string, few: string, many: string): string {
