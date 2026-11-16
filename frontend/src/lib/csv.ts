@@ -2,10 +2,32 @@
 // delimiters/newlines, "" as an escaped quote) and auto-detects comma vs
 // semicolon as the delimiter (many EU bank exports use ";"). No dependency
 // pulled in for this; bank CSV exports don't need more than this covers.
+//
+// Delimiter candidates are counted only outside quoted cells: a quoted header
+// like "Дата, время" contains a comma that says nothing about the file's
+// separator, so counting it could outvote the ";" that actually splits the
+// columns and make every row parse as one field.
+function countUnquoted(line: string, char: string): number {
+  let inQuotes = false;
+  let count = 0;
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (!inQuotes && line[i] === char) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 export function parseCsv(text: string): string[][] {
   const firstLine = text.slice(0, text.search(/\r?\n/) === -1 ? text.length : text.search(/\r?\n/));
-  const commaCount = (firstLine.match(/,/g) ?? []).length;
-  const semicolonCount = (firstLine.match(/;/g) ?? []).length;
+  const commaCount = countUnquoted(firstLine, ",");
+  const semicolonCount = countUnquoted(firstLine, ";");
   const delimiter = semicolonCount > commaCount ? ";" : ",";
 
   const rows: string[][] = [];
@@ -31,7 +53,16 @@ export function parseCsv(text: string): string[][] {
     }
 
     if (char === '"') {
-      inQuotes = true;
+      // A quote only opens a quoted field at the start of that field
+      // (RFC 4180). Mid-field it is a literal character — bank descriptions
+      // routinely contain one (e.g. a merchant name like 'Adapter 12"'), and
+      // treating it as an opening quote would swallow the rest of the file
+      // into that one cell.
+      if (field.length === 0) {
+        inQuotes = true;
+      } else {
+        field += char;
+      }
     } else if (char === delimiter) {
       row.push(field);
       field = "";
