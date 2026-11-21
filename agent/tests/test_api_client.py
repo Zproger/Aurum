@@ -169,6 +169,19 @@ async def test_non_json_error_body_is_not_swallowed() -> None:
     assert "Bad Gateway" in exc_info.value.detail
 
 
+async def test_huge_error_body_is_truncated_for_the_model() -> None:
+    # A proxy's HTML error page must not blow up the model's context.
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(502, text="<html>" + "x" * 2000 + "</html>")
+
+    client = make_client(handler)
+    with pytest.raises(AurumApiError) as exc_info:
+        await client.request("GET", "/accounts")
+
+    assert "(truncated)" in exc_info.value.detail
+    assert len(exc_info.value.detail) < 600
+
+
 async def test_delete_returns_none_on_204() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(204)
@@ -224,4 +237,4 @@ async def test_success_body_with_garbage_json_is_an_api_error() -> None:
         await client.request("GET", "/accounts")
 
     assert exc_info.value.status == 200
-    assert "Не JSON-ответ" in exc_info.value.detail
+    assert "Non-JSON response" in exc_info.value.detail

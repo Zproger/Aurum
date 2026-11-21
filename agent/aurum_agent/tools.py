@@ -75,19 +75,21 @@ def _make_caller(client: AurumClient) -> Callable[..., Awaitable[str]]:
         # helpful message than this. Lives here so every update tool —
         # including the transaction ones added later — gets it for free.
         if method == "PATCH" and body is not None and not body:
-            return "Нечего обновлять: передайте хотя бы одно изменяемое поле."
+            return "Nothing to update: pass at least one field to change."
         try:
             payload = await client.request(method, path, params=params, json=body)
         except AurumApiError as error:
             # Not re-raised on purpose: as a tool result, the backend's
             # own message (e.g. "Category 'Salary' is a income category…")
-            # lets the model correct itself on the next step.
-            return f"Ошибка API (код {error.status}): {error.detail}"
+            # lets the model correct itself on the next step. English on
+            # purpose: this is model-facing text — the system prompt's
+            # rule 5 keys on the "API error" prefix.
+            return f"API error (HTTP {error.status}): {error.detail}"
         if compact is not None:
             payload = compact(payload)
         if payload is None:
             # Deletes answer 204 with no body — "null" would only confuse.
-            return "OK: выполнено (204 No Content)"
+            return "OK: done (204 No Content)"
         return _dumps(payload)
 
     return call

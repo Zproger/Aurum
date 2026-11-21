@@ -162,7 +162,7 @@ async def test_update_account_without_fields_makes_no_call(mock_client_factory: 
     result = await bundle_by_name(bundle)["update_account"].ainvoke({"account_id": 3})
 
     assert calls == []  # a no-op request would only confuse the backend
-    assert "Нечего обновлять" in result
+    assert "Nothing to update" in result
 
 
 async def test_delete_account_reports_204_without_body(mock_client_factory: Any) -> None:
@@ -243,7 +243,7 @@ async def test_api_error_becomes_tool_text_not_exception(mock_client_factory: An
     # The model must see the backend's own message to self-correct.
     result = await bundle_by_name(bundle)["create_tag"].ainvoke({"name": "x"})
 
-    assert "Ошибка API (код 400)" in result
+    assert "API error (HTTP 400)" in result
     assert "income category" in result
 
 
@@ -262,7 +262,7 @@ async def test_validation_error_list_reaches_tool_text(mock_client_factory: Any)
         {"name": "x", "kind": "expense", "color": "#22c55e"}
     )
 
-    assert "Ошибка API (код 422)" in result
+    assert "API error (HTTP 422)" in result
     assert "name: Field required" in result
 
 
@@ -277,8 +277,8 @@ async def test_transport_failure_reaches_tool_text(mock_client_factory: Any) -> 
 
     result = await bundle_by_name(bundle)["list_accounts"].ainvoke({})
 
-    assert "Ошибка API (код 0)" in result
-    assert "Не удалось соединиться" in result
+    assert "API error (HTTP 0)" in result
+    assert "Connection" in result
 
 
 async def test_get_transaction_flattens_nested_names(mock_client_factory: Any) -> None:

@@ -66,7 +66,7 @@ def format_error_detail(payload: Any) -> str:
     # must not blow up the model's context window.
     text = str(payload)
     if len(text) > 500:
-        text = text[:500] + "…(усечено)"
+        text = text[:500] + "…(truncated)"
     return text
 
 
@@ -121,9 +121,11 @@ class AurumClient:
                 response = await self._client.request(method, path, params=params, json=json)
             except httpx.HTTPError as error:
                 if attempt >= retries:
+                    # Model-facing text: English matches the tool layer
+                    # and the backend's own messages.
                     raise AurumApiError(
                         0,
-                        f"Не удалось соединиться с {self._config.api_url}: {error!r}",
+                        f"Connection to {self._config.api_url} failed: {error!r}",
                     ) from error
                 attempt += 1
                 await asyncio.sleep(RETRY_BACKOFF_SECONDS * attempt)
@@ -153,7 +155,7 @@ class AurumClient:
             # model as an error it can report, not as a JSONDecodeError.
             raise AurumApiError(
                 response.status_code,
-                f"Не JSON-ответ от {self._config.api_url}: {error!r}",
+                f"Non-JSON response from {self._config.api_url}: {error!r}",
             ) from error
 
     async def health(self) -> bool:
