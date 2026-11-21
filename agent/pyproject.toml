@@ -2,6 +2,7 @@
 name = "aurum-agent"
 version = "0.1.0"
 description = "Terminal AI agent for Aurum: transactions, accounts and categories over the REST API"
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     # HTTP client for the Aurum REST API — the same one the backend uses.
