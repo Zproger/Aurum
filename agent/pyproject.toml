@@ -1,0 +1,35 @@
+[project]
+name = "aurum-agent"
+version = "0.1.0"
+description = "Terminal AI agent for Aurum: transactions, accounts and categories over the REST API"
+requires-python = ">=3.11"
+dependencies = [
+    # HTTP client for the Aurum REST API — the same one the backend uses.
+    "httpx>=0.28",
+    # The agent loop: LangChain describes the tools, LangGraph drives the
+    # dialogue graph with write confirmations (interrupt) and state
+    # checkpoints.
+    "langchain>=1.0",
+    "langgraph>=1.0",
+    "langchain-openai>=1.0",
+    # Configuration is read from the project-root .env, like the Docker stack.
+    "python-dotenv>=1.0",
+    # Readable terminal output: transaction tables, operation previews.
+    "rich>=13.0",
+]
+
+[project.scripts]
+aurum-agent = "aurum_agent.__main__:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["aurum_agent"]
