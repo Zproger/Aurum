@@ -29,6 +29,7 @@ from .api_client import AurumApiError, AurumClient
 PATH_ACCOUNTS = "/accounts"
 PATH_CATEGORIES = "/categories"
 PATH_TAGS = "/tags"
+PATH_TRANSACTIONS = "/transactions"
 
 
 @dataclass(frozen=True)
@@ -112,6 +113,44 @@ def _compact_category(category: dict[str, Any]) -> dict[str, Any]:
         "kind": category.get("kind"),
         "parent_id": category.get("parent_id"),
         "is_default": category.get("is_default"),
+    }
+
+
+def _compact_transaction(transaction: dict[str, Any]) -> dict[str, Any]:
+    """Fields the model needs to discuss a transaction in user terms.
+
+    Nested account/category objects are flattened to ``*_name`` so the
+    model can speak human language without extra lookups. Splits ride
+    along when present (empty list on a normal single-category row).
+    transfer_account_name is deliberately NOT resolved here — it would
+    cost a second request per row; the model can name the destination
+    via list_accounts when the user asks about a transfer.
+    """
+    account = transaction.get("account") or {}
+    category = transaction.get("category") or {}
+    splits = transaction.get("splits") or []
+    return {
+        "id": transaction.get("id"),
+        "type": transaction.get("type"),
+        "amount": transaction.get("amount"),
+        "date": transaction.get("date"),
+        "description": transaction.get("description"),
+        "merchant": transaction.get("merchant"),
+        "notes": transaction.get("notes"),
+        "account_id": transaction.get("account_id"),
+        "account_name": account.get("name"),
+        "category_id": category.get("id"),
+        "category_name": category.get("name"),
+        "transfer_account_id": transaction.get("transfer_account_id"),
+        "tags": [tag.get("name") for tag in transaction.get("tags", [])],
+        "splits": [
+            {
+                "category_name": (split.get("category") or {}).get("name"),
+                "amount": split.get("amount"),
+                "note": split.get("note"),
+            }
+            for split in splits
+        ],
     }
 
 
@@ -344,5 +383,186 @@ def build_tools(client: AurumClient) -> ToolBundle:
     )
     async def create_tag(name: str) -> str:
         return await call("POST", PATH_TAGS, body={"name": name})
+
+    # --- Transactions ---
+
+    @registry.add(
+        "Fetch one transaction by id, compacted (account_name, "
+        "category_name, tags, splits included). Use this when the exact "
+        "row is needed for an edit."
+    )
+    async def get_transaction(transaction_id: int) -> str:
+        return await call(
+            "GET",
+            f"{PATH_TRANSACTIONS}/{transaction_id}",
+            compact=_compact_transaction,
+        )
+
+    @registry.add(
+        "Search transactions. All filters are optional: year (2000-2100) "
+        "and/or month (1-12), or start_date/end_date ('YYYY-MM-DD', "
+        "inclusive, combinable with year/month), account_id, category_id, "
+        "tag_id, type ('income' | 'expense' | 'transfer'), search (a "
+        "case-insensitive substring over description, merchant and "
+        "notes). sort: 'date_desc' (default), 'amount_desc', "
+        "'amount_asc'. Returns {items, total, page, page_size} — when "
+        "total exceeds page*page_size, call again with a higher page. "
+        "page_size: max 200."
+    )
+    async def search_transactions(
+        year: int | None = None,
+        month: int | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        account_id: int | None = None,
+        category_id: int | None = None,
+        tag_id: int | None = None,
+        type: str | None = None,
+        search: str | None = None,
+        sort: str | None = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> str:
+        params = _omit_none(
+            year=year,
+            month=month,
+            start_date=start_date,
+            end_date=end_date,
+            account_id=account_id,
+            category_id=category_id,
+            tag_id=tag_id,
+            type=type,
+            search=search,
+            sort=sort,
+            page=page,
+            page_size=page_size,
+        )
+        # A blank string filter ("" or whitespace-only) would sail to
+        # the backend and fail validation — treat it as "not provided".
+        params = {
+            name: value
+            for name, value in params.items()
+            if not (isinstance(value, str) and not value.strip())
+        }
+        return await call(
+            "GET",
+            PATH_TRANSACTIONS,
+            params=params,
+            compact=lambda payload: {
+                "items": [_compact_transaction(item) for item in payload.get("items", [])],
+                "total": payload.get("total"),
+                "page": payload.get("page"),
+                "page_size": payload.get("page_size"),
+            },
+        )
+
+    @registry.add(
+        "Create one transaction. type: 'income', 'expense' or 'transfer'. "
+        "amount is positive (direction comes from type), up to 2 decimal "
+        "places. description: 1-255 chars, auto-capitalized server-side. "
+        "date: 'YYYY-MM-DD'. For income/expense: category_id is optional "
+        "but must match the type's kind (income transaction needs an "
+        "income category, expense needs an expense one) and "
+        "transfer_account_id must NOT be set. For transfer: "
+        "transfer_account_id is required and must differ from account_id, "
+        "and category_id must NOT be set. tag_ids: existing tag ids — "
+        "create new tags with create_tag first. Transactions split across "
+        "multiple categories are NOT supported by these tools — record "
+        "a single-category transaction instead.",
+        is_write=True,
+    )
+    async def create_transaction(
+        account_id: int,
+        type: str,
+        amount: float,
+        description: str,
+        date: str,
+        category_id: int | None = None,
+        transfer_account_id: int | None = None,
+        merchant: str | None = None,
+        notes: str | None = None,
+        tag_ids: list[int] | None = None,
+    ) -> str:
+        body = _omit_none(
+            account_id=account_id,
+            type=type,
+            amount=amount,
+            description=description,
+            date=date,
+            category_id=category_id,
+            transfer_account_id=transfer_account_id,
+            merchant=merchant,
+            notes=notes,
+            tag_ids=tag_ids,
+        )
+        return await call(
+            "POST",
+            PATH_TRANSACTIONS,
+            body=body,
+            compact=_compact_transaction,
+        )
+
+    @registry.add(
+        "Update a transaction partially — omitted fields stay as-is. "
+        "Checks run against the row as it would look AFTER the patch, so "
+        "switching type may force clearing fields: a transfer must not "
+        "carry a category (clear_category=true sends category_id=null), "
+        "an income/expense must not carry transfer_account_id "
+        "(clear_transfer=true sends transfer_account_id=null). The clear "
+        "flags win if the matching id field is also given. tag_ids: omit "
+        "to keep the tags, send (even an empty list) to replace the "
+        "whole tag set. Transactions split across multiple categories "
+        "are NOT supported by these tools — edit single-category rows "
+        "only.",
+        is_write=True,
+    )
+    async def update_transaction(
+        transaction_id: int,
+        account_id: int | None = None,
+        type: str | None = None,
+        amount: float | None = None,
+        description: str | None = None,
+        date: str | None = None,
+        category_id: int | None = None,
+        clear_category: bool = False,
+        transfer_account_id: int | None = None,
+        clear_transfer: bool = False,
+        merchant: str | None = None,
+        notes: str | None = None,
+        tag_ids: list[int] | None = None,
+    ) -> str:
+        body = _omit_none(
+            account_id=account_id,
+            type=type,
+            amount=amount,
+            description=description,
+            date=date,
+            category_id=category_id,
+            transfer_account_id=transfer_account_id,
+            merchant=merchant,
+            notes=notes,
+            tag_ids=tag_ids,
+        )
+        # The backend treats explicit null as "clear" and an omitted field
+        # as "keep" (exclude_unset), so clearing needs its own flags —
+        # same pattern as update_category's clear_parent.
+        if clear_category:
+            body["category_id"] = None
+        if clear_transfer:
+            body["transfer_account_id"] = None
+        return await call(
+            "PATCH",
+            f"{PATH_TRANSACTIONS}/{transaction_id}",
+            body=body,
+            compact=_compact_transaction,
+        )
+
+    @registry.add(
+        "Delete one transaction permanently. Resolve the id first with "
+        "search_transactions or get_transaction when uncertain.",
+        is_write=True,
+    )
+    async def delete_transaction(transaction_id: int) -> str:
+        return await call("DELETE", f"{PATH_TRANSACTIONS}/{transaction_id}")
 
     return registry.bundle()
