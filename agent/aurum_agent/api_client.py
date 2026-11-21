@@ -24,6 +24,12 @@ RETRY_BACKOFF_SECONDS = 0.3
 # backoff above it is not something tests need to patch.
 REQUEST_TIMEOUT = httpx.Timeout(15.0)
 
+# Endpoints the client itself talks to (the tools keep their own PATH_*
+# constants in tools.py). /health sits behind no auth and backs the
+# Docker healthcheck; /settings carries the display currency.
+HEALTH_PATH = "/health"
+SETTINGS_PATH = "/settings"
+
 
 class AurumApiError(Exception):
     """API call failed. Carries the HTTP status (0 for transport errors).
@@ -161,7 +167,7 @@ class AurumClient:
     async def health(self) -> bool:
         """Pre-flight check: ``GET /health`` answers ``{"status": "ok"}``."""
         try:
-            payload = await self.request("GET", "/health")
+            payload = await self.request("GET", HEALTH_PATH)
         except AurumApiError:
             return False
         return isinstance(payload, dict) and payload.get("status") == "ok"
